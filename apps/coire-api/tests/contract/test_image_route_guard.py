@@ -143,7 +143,7 @@ async def test_ordinary_reads_hide_non_owner_and_unpublished_rows() -> None:
         await authorization.require_owned_image_output(
             cast(AsyncSession, FakeRows(output_row)), uuid.uuid4(), admin
         )
-    own_job = SimpleNamespace(owner_user_id=OWNER)
+    own_job = SimpleNamespace(owner_user_id=OWNER, history_deleted_at=None)
     assert (
         await authorization.require_owned_image_job(
             cast(AsyncSession, FakeRows(own_job)), "job", admin

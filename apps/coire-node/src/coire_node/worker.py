@@ -19,8 +19,11 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -524,9 +527,41 @@ def _progress(job: JobFile, delta: int, files_done: int) -> None:
 # --------------------------------------------------------------------------- entry point
 
 
+@contextmanager
+def _qualification_memory_guard(job: JobFile, reservation_bytes: int) -> Iterator[None]:
+    """Stop this owned worker during an overage, even while native Metal is evaluating."""
+    from coire_node.footprint import resident_bytes
+
+    stop = threading.Event()
+
+    def monitor() -> None:
+        while not stop.wait(0.01):
+            try:
+                footprint = resident_bytes(os.getpid())
+            except Exception:
+                footprint = None
+            if footprint is None or footprint > reservation_bytes:
+                try:
+                    job.fail(
+                        JobErrorKind.VALIDATION_FAILED,
+                        "image qualification memory budget exceeded or unavailable",
+                    )
+                finally:
+                    os._exit(EXIT_FAILED)
+
+    thread = threading.Thread(target=monitor, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=2)
+
+
 def run_image_validate(job: JobFile) -> int:
     """Validate a pinned local image copy inside a credential-free acquisition worker."""
     from coire_core.models.image_worker import ImageValidationBase
+    from coire_core.models.images import ImageResolutionBounds
     from coire_node.image_runtime.pipeline import ImagePipelineUnavailable
     from coire_node.image_runtime.preflight import ImageCopyUnavailable
     from coire_node.image_validation import ImageValidationUnavailable, validate_image_asset
@@ -539,6 +574,9 @@ def run_image_validate(job: JobFile) -> int:
         source_revision=job.params["source_revision"],
         manifest_sha256=job.params["manifest_sha256"],
         reservation_id=uuid.UUID(job.params["reservation_id"]),
+        resolution_bounds=ImageResolutionBounds.model_validate(job.params["resolution_bounds"])
+        if job.params.get("resolution_bounds") is not None
+        else None,
         compatible_base=(
             ImageValidationBase.model_validate(job.params["compatible_base"])
             if job.params.get("compatible_base") is not None
@@ -548,9 +586,15 @@ def run_image_validate(job: JobFile) -> int:
     job.status.stage = JobStage.RESOLVING
     job.save(force=True)
     try:
-        result = validate_image_asset(
-            _store(job), request, reservation_bytes=int(job.params["reservation_bytes"])
-        )
+        if request.resolution_bounds is not None:
+            with _qualification_memory_guard(job, int(job.params["reservation_bytes"])):
+                result = validate_image_asset(
+                    _store(job), request, reservation_bytes=int(job.params["reservation_bytes"])
+                )
+        else:
+            result = validate_image_asset(
+                _store(job), request, reservation_bytes=int(job.params["reservation_bytes"])
+            )
     except (ImageValidationUnavailable, ImageCopyUnavailable, ImagePipelineUnavailable) as exc:
         job.fail(JobErrorKind.VALIDATION_FAILED, str(exc))
         return EXIT_FAILED

@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -147,6 +147,33 @@ class ImageOutputSettings(BaseModel):
     embed_metadata: Literal[True] = True
 
 
+def image_canvas_dimensions(width: int, height: int) -> tuple[int, int]:
+    """Native engines require 16-pixel canvases; outputs retain requested dimensions."""
+    return ((width + 15) // 16 * 16, (height + 15) // 16 * 16)
+
+
+class ImageResolutionBounds(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_width: int = Field(default=1980, ge=512, le=1980)
+    max_height: int = Field(default=1980, ge=512, le=1980)
+
+
+class ImageResolutionQualificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    bounds: ImageResolutionBounds = Field(default_factory=ImageResolutionBounds)
+    reservation_bytes: int = Field(default=128 * 1024**3, ge=1024**3, le=1024**4)
+
+
+class ImageResolutionQualificationReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_id: uuid.UUID
+    job_id: uuid.UUID
+    state: Literal["queued"] = "queued"
+
+
 class ImageSpec(BaseModel):
     """Fully specified client-side values before model-capability validation."""
 
@@ -158,8 +185,8 @@ class ImageSpec(BaseModel):
     mode: ImageMode = ImageMode.TXT2IMG
     prompt: str = Field(min_length=1, max_length=4000)
     negative_prompt: str | None = Field(default=None, max_length=4000)
-    width: int = Field(ge=64, le=4096, multiple_of=8)
-    height: int = Field(ge=64, le=4096, multiple_of=8)
+    width: int = Field(ge=64, le=4096)
+    height: int = Field(ge=64, le=4096)
     steps: int = Field(ge=1, le=150)
     guidance: Decimal = Field(ge=0, le=30)
     seed: int | None = Field(default=None, ge=0, le=UINT32_MAX)
@@ -182,8 +209,9 @@ class ImageSpec(BaseModel):
 
     @model_validator(mode="after")
     def fixed_pipeline(self) -> ImageSpec:
-        if self.width * self.height > 16_000_000:
-            raise ValueError("width and height exceed the 16 MP bound")
+        native_width, native_height = image_canvas_dimensions(self.width, self.height)
+        if native_width * native_height > 16_000_000:
+            raise ValueError("padded width and height exceed the 16 MP bound")
         if self.upscale is not None and (
             self.width * self.upscale.factor > 4096
             or self.height * self.upscale.factor > 4096
@@ -245,18 +273,18 @@ class ImageCapabilityProfile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     modes: tuple[ImageMode, ...] = Field(min_length=1, max_length=4)
-    min_width: int = Field(ge=64, le=4096, multiple_of=8)
-    max_width: int = Field(ge=64, le=4096, multiple_of=8)
-    min_height: int = Field(ge=64, le=4096, multiple_of=8)
-    max_height: int = Field(ge=64, le=4096, multiple_of=8)
+    min_width: int = Field(ge=64, le=4096)
+    max_width: int = Field(ge=64, le=4096)
+    min_height: int = Field(ge=64, le=4096)
+    max_height: int = Field(ge=64, le=4096)
     max_pixels: int = Field(ge=4096, le=16_000_000)
     min_steps: int = Field(ge=1, le=150)
     max_steps: int = Field(ge=1, le=150)
     min_guidance: Decimal = Field(ge=0, le=30)
     max_guidance: Decimal = Field(ge=0, le=30)
     max_outputs: int = Field(ge=1, le=4)
-    default_width: int | None = Field(default=None, ge=64, le=4096, multiple_of=8)
-    default_height: int | None = Field(default=None, ge=64, le=4096, multiple_of=8)
+    default_width: int | None = Field(default=None, ge=64, le=4096)
+    default_height: int | None = Field(default=None, ge=64, le=4096)
     default_steps: int | None = Field(default=None, ge=1, le=150)
     default_guidance: Decimal | None = Field(default=None, ge=0, le=30)
     supports_negative_prompt: bool = False
@@ -336,6 +364,7 @@ class ImageModelOption(BaseModel):
     slug: str = Field(min_length=1, max_length=255)
     display_name: str = Field(min_length=1, max_length=120)
     capability: ImageCapabilityProfile
+    mode_capabilities: dict[ImageMode, ImageCapabilityProfile] = Field(default_factory=dict)
     required_dependency_count: int = Field(ge=0, le=16)
     loras: tuple[ImageAdapterOption, ...] = ()
     upscalers: tuple[ImageAdapterOption, ...] = ()
@@ -454,8 +483,8 @@ class ImageSubmitRequest(BaseModel):
     mode: ImageMode | None = None
     prompt: str | None = Field(default=None, min_length=1, max_length=4000)
     negative_prompt: str | None = Field(default=None, max_length=4000)
-    width: int | None = Field(default=None, ge=64, le=4096, multiple_of=8)
-    height: int | None = Field(default=None, ge=64, le=4096, multiple_of=8)
+    width: int | None = Field(default=None, ge=64, le=4096)
+    height: int | None = Field(default=None, ge=64, le=4096)
     steps: int | None = Field(default=None, ge=1, le=150)
     guidance: Decimal | None = Field(default=None, ge=0, le=30)
     seed: int | None = Field(default=None, ge=0, le=UINT32_MAX)
@@ -899,8 +928,9 @@ class OpenAIImageGenerationRequest(BaseModel):
             width, height = map(int, self.size.split("x"))
             if not 64 <= width <= 4096 or not 64 <= height <= 4096:
                 raise ValueError("size exceeds image dimensions")
-            if width % 8 or height % 8 or width * height > 16_000_000:
-                raise ValueError("size violates alignment or pixel bound")
+            native_width, native_height = image_canvas_dimensions(width, height)
+            if native_width * native_height > 16_000_000:
+                raise ValueError("size violates padded pixel bound")
         return self
 
 
@@ -966,3 +996,40 @@ def pixel_digest(pixels: bytes, *, width: int, height: int, channels: int) -> st
     digest.update(f"{width}x{height}x{channels}:".encode())
     digest.update(pixels)
     return digest.hexdigest()
+
+
+class ImageHistoryDeletionRequest(BaseModel):
+    """Permanently remove terminal history events, retaining image provenance."""
+
+    model_config = ConfigDict(extra="forbid")
+    job_ids: list[Annotated[str, Field(pattern=ULID_PATTERN)]] = Field(min_length=1, max_length=100)
+
+    @field_validator("job_ids")
+    @classmethod
+    def unique_jobs(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("job ids must be unique")
+        return value
+
+
+class ImageHistoryDeletionReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    deleted_job_ids: list[Annotated[str, Field(pattern=ULID_PATTERN)]]
+
+
+def qualified_control_capability(base: ImageCapabilityProfile) -> ImageCapabilityProfile:
+    """Auxiliary control has its own measured 512px smoke, not expanded base evidence."""
+    return ImageCapabilityProfile.model_validate(
+        {
+            **base.model_dump(),
+            "modes": [ImageMode.CONTROL],
+            "min_width": 512,
+            "max_width": 512,
+            "min_height": 512,
+            "max_height": 512,
+            "max_pixels": 512**2,
+            "default_width": 512,
+            "default_height": 512,
+            "max_loras": 0,
+        }
+    )

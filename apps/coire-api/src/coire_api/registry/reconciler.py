@@ -28,7 +28,7 @@ from datetime import UTC, datetime, timedelta
 
 from opentelemetry import metrics as otel_metrics
 from opentelemetry import trace
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from coire_api.audit import write_audit
@@ -43,6 +43,11 @@ from coire_api.db import (
     NodeRow,
     PlacementCommandRow,
     create_engine,
+)
+from coire_api.images.resolution_qualification import (
+    is_qualification,
+    qualification_request,
+    qualification_total,
 )
 from coire_api.instance import service as instance_service
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
@@ -297,7 +302,12 @@ class RegistryReconciler:
             (
                 await session.execute(
                     select(DownloadJobRow).where(
-                        DownloadJobRow.stage.notin_([DownloadStage.DONE, DownloadStage.FAILED])
+                        or_(
+                            DownloadJobRow.stage.notin_([DownloadStage.DONE, DownloadStage.FAILED]),
+                            DownloadJobRow.image_validation["reservation_cleanup_pending"]
+                            .as_boolean()
+                            .is_(True),
+                        )
                     )
                 )
             )
@@ -305,8 +315,15 @@ class RegistryReconciler:
             .all()
         )
         for job in jobs:
+            if is_qualification(job) and job.stage in (DownloadStage.DONE, DownloadStage.FAILED):
+                await self._cleanup_resolution_holds(client, job)
+                continue
             model = await session.get(ModelRow, job.model_id)
             if model is None or model.state is ModelState.RETIRED:
+                if is_qualification(job):
+                    job.stage = DownloadStage.FAILED
+                    job.failure_reason = "model retired during qualification"
+                    await self._cleanup_resolution_holds(client, job)
                 continue
             with tracer.start_as_current_span(f"registry.reconcile.{job.stage.value}"):
                 try:
@@ -316,6 +333,30 @@ class RegistryReconciler:
                 except Exception as exc:
                     logger.exception("job %s failed unexpectedly", job.id)
                     await self._fail(session, job, model, f"{type(exc).__name__}: {exc}")
+                if is_qualification(job) and job.stage in (
+                    DownloadStage.DONE,
+                    DownloadStage.FAILED,
+                ):
+                    await self._cleanup_resolution_holds(client, job)
+
+    async def _cleanup_resolution_holds(self, client: NodeClient, job: DownloadJobRow) -> None:
+        """Terminal cleanup stays in the durable cursor until both releases succeed."""
+        evidence = dict(job.image_validation or {})
+        if not evidence.get("reservation_cleanup_pending"):
+            return
+        try:
+            # Node names are recorded at admission; no mutable topology lookup is needed.
+            names = evidence.get("node_names")
+            if not isinstance(names, list) or len(names) != 2:
+                return
+            for role, name in zip(("origin", "replica"), names, strict=True):
+                await client.release_reservation(
+                    str(name), uuid.uuid5(job.id, f"image-validation:{role}")
+                )
+        except NodeError:
+            return
+        evidence["reservation_cleanup_pending"] = False
+        job.image_validation = evidence
 
     async def _advance_one(
         self,
@@ -460,6 +501,7 @@ class RegistryReconciler:
                 await self._fail(session, job, model, "image compatible base is invalid")
                 return False
         evidence = dict(job.image_validation or {})
+        resolution = qualification_request(job)
         for role, node in (("origin", origin), ("replica", replica)):
             if role in evidence:
                 continue
@@ -470,7 +512,9 @@ class RegistryReconciler:
                     idempotency_key=validation_id,
                     workflow_id=job.id,
                     variant_id=model.id,
-                    memory_bytes=model.memory_estimate_bytes,
+                    memory_bytes=resolution.reservation_bytes
+                    if resolution
+                    else model.memory_estimate_bytes,
                     disk_bytes=1,
                 ),
             )
@@ -485,6 +529,7 @@ class RegistryReconciler:
                     manifest_sha256=model.manifest_sha256,
                     reservation_id=validation_id,
                     compatible_base=compatible_base,
+                    resolution_bounds=resolution.bounds if resolution else None,
                 ),
             )
             if not status.is_terminal:
@@ -520,6 +565,29 @@ class RegistryReconciler:
             ):
                 await self._fail(session, job, model, "image validation differs from registry")
                 return False
+            if resolution is not None:
+                profile = result.image_capability_profile
+                bounds = resolution.bounds
+                expected = {
+                    (bounds.max_width, bounds.max_height, "txt2img"),
+                    (bounds.max_width, max(512, bounds.max_height * 9 // 16), "txt2img"),
+                    (max(512, bounds.max_width * 9 // 16), bounds.max_height, "txt2img"),
+                    (bounds.max_width, bounds.max_height, "img2img"),
+                }
+                measured = {
+                    (item.width, item.height, item.mode) for item in result.resolution_samples
+                }
+                if (
+                    profile is None
+                    or profile.max_width != bounds.max_width
+                    or profile.max_height != bounds.max_height
+                    or result.validator_version != "image-resolution-v1"
+                    or not expected.issubset(measured)
+                    or max(result.peak_rss_bytes, result.peak_physical_bytes or 0)
+                    > resolution.reservation_bytes
+                ):
+                    await self._fail(session, job, model, "image resolution evidence is incomplete")
+                    return False
             evidence[role] = result.model_dump(mode="json")
             job.image_validation = evidence
             job.updated_at = datetime.now(UTC)
@@ -536,6 +604,30 @@ class RegistryReconciler:
                 return False
             model.image_capability_profile = origin_result.image_capability_profile.model_dump(
                 mode="json"
+            )
+        if resolution is not None:
+            model.memory_estimate_bytes = max(
+                model.memory_estimate_bytes,
+                int(
+                    max(
+                        origin_result.peak_physical_delta_bytes or 0,
+                        replica_result.peak_physical_delta_bytes or 0,
+                    )
+                    * 1.2
+                ),
+            )
+            qualification_total.add(1, {"outcome": "completed"})
+            await write_audit(
+                session,
+                actor=ACTOR,
+                action="image.resolution.qualification_completed",
+                target_type="model",
+                target_id=str(model.id),
+                detail={
+                    "job_id": str(job.id),
+                    "bounds": resolution.bounds.model_dump(),
+                    "memory_estimate_bytes": model.memory_estimate_bytes,
+                },
             )
         model.image_validated_at = datetime.now(UTC)
         for role, node in (("origin", origin), ("replica", replica)):
@@ -691,6 +783,24 @@ class RegistryReconciler:
         job.failure_reason = reason
         job.finished_at = datetime.now(UTC)
         job.updated_at = datetime.now(UTC)
+        if is_qualification(job):
+            previous = (job.image_validation or {}).get("previous_profile")
+            previous_memory = (job.image_validation or {}).get("previous_memory")
+            if isinstance(previous, dict):
+                model.image_capability_profile = previous
+            if isinstance(previous_memory, int):
+                model.memory_estimate_bytes = previous_memory
+            qualification_total.add(1, {"outcome": "failed"})
+            await write_audit(
+                session,
+                actor=ACTOR,
+                action="image.resolution.qualification_failed",
+                target_type="model",
+                target_id=str(model.id),
+                outcome=AuditOutcome.ERROR,
+                detail={"job_id": str(job.id), "reason": reason},
+            )
+            return
         await service.transition(session, model, ModelState.FAILED, reason)
         await write_audit(
             session,

@@ -1,3 +1,4 @@
+import { ImageResolutionQualification } from "./components/images/ImageResolutionQualification";
 import type { components } from "./api/schema";
 import { SignIn } from "./pages/SignIn";
 import { type FormEvent, useEffect, useState } from "react";
@@ -360,6 +361,22 @@ export function DataPage({ kind }: { kind: "models" | "instances" }) {
                     ) : (
                       <span className="muted">No active acquisition</span>
                     )}
+                    {r.kind === "image_model" &&
+                      r.state === "ready" &&
+                      r.image_capability_profile != null &&
+                      typeof r.image_capability_profile === "object" &&
+                      Array.isArray(
+                        (r.image_capability_profile as Record<string, unknown>).modes,
+                      ) &&
+                      (
+                        (r.image_capability_profile as Record<string, unknown>).modes as unknown[]
+                      ).includes("txt2img") && (
+                        <ImageResolutionQualification
+                          modelId={String(r.id)}
+                          name={String(r.display_name ?? r.slug)}
+                          onChanged={reload}
+                        />
+                      )}
                     {(Array.isArray(r.copies) ? r.copies : []).map((copy) => {
                       const value = copy as Record<string, unknown>;
                       return (

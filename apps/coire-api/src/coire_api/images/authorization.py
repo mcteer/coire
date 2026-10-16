@@ -22,6 +22,7 @@ from coire_api.db import (
     UserRow,
     session_scope,
 )
+from coire_api.images.safety import ensure_image_content_allowed
 from coire_core.errors import ImageForbidden, ImageNotFound
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.images import (
@@ -170,7 +171,7 @@ async def require_owned_image_job(
     session: AsyncSession, job_id: str, principal: Principal
 ) -> ImageJobRow:
     row = await session.get(ImageJobRow, job_id)
-    if row is None or row.owner_user_id != principal.user_id:
+    if row is None or row.owner_user_id != principal.user_id or row.history_deleted_at is not None:
         raise ImageNotFound()
     return row
 
@@ -226,6 +227,12 @@ def _output_requires_explicit(row: ImageOutputRow) -> bool:
         ImageContentTag.UNKNOWN,
     ):
         raise ImageForbidden()
+    prompt = spec.get("prompt") if isinstance(spec, dict) else None
+    if not isinstance(prompt, str):
+        raise ImageForbidden()
+    ensure_image_content_allowed(prompt, explicit=mode == ImageContentMode.EXPLICIT)
+    if row.content_tag == ImageContentTag.UNKNOWN:
+        return True
     if row.content_tag == ImageContentTag.NORMAL:
         try:
             provenance = ImageClassificationResult.model_validate(row.classifier_provenance)

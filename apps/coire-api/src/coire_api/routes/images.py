@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 
 from coire_api.db import session_scope
 from coire_api.deps import SessionDep
-from coire_api.images import admission, cancellation, catalog, events, jobs, presets
+from coire_api.images import admission, cancellation, catalog, events, history, jobs, presets
 from coire_api.images.authorization import CurrentImageUser, audit_image_refusal
 from coire_api.images.telemetry import (
     ImageOperation,
@@ -32,6 +32,8 @@ from coire_core.errors import (
 from coire_core.models.files import ULID_PATTERN
 from coire_core.models.images import (
     ImageGenerationLimits,
+    ImageHistoryDeletionReceipt,
+    ImageHistoryDeletionRequest,
     ImageJob,
     ImageJobEvent,
     ImageJobPage,
@@ -193,6 +195,25 @@ async def list_image_jobs(
             raise
         response.headers["Cache-Control"] = "private, no-store"
         record_image_request(ImageOperation.JOB_READ, ImageOutcome.SUCCEEDED)
+        return result
+
+
+@router.post("/history/deletions", response_model=ImageHistoryDeletionReceipt)
+async def delete_image_history(
+    body: ImageHistoryDeletionRequest,
+    principal: CurrentImageUser,
+    session: SessionDep,
+    response: Response,
+) -> ImageHistoryDeletionReceipt:
+    with image_span(ImageOperation.HISTORY_DELETE):
+        try:
+            result = await history.delete_owned_history(session, principal, body)
+            await session.commit()
+        except CoireError:
+            record_image_request(ImageOperation.HISTORY_DELETE, ImageOutcome.REFUSED)
+            raise
+        response.headers["Cache-Control"] = "private, no-store"
+        record_image_request(ImageOperation.HISTORY_DELETE, ImageOutcome.SUCCEEDED)
         return result
 
 

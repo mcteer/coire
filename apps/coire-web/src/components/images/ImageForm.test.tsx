@@ -30,6 +30,7 @@ const models = [
       max_width: 512,
       min_height: 512,
       max_height: 512,
+      max_pixels: 512 * 512,
       min_steps: 1,
       max_steps: 20,
       max_outputs: 4,

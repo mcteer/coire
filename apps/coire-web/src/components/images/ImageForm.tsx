@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ImageModelList, ImagePresetList, ImageSubmitRequest } from "../../api/images";
 import { ImageInputField } from "./ImageInputField";
+import { aspectOf, aspectRatios, fitImageSize, validImageSize } from "./imageSizes";
 import { PresetRail } from "./PresetRail";
 
 type Model = ImageModelList["items"][number];
@@ -40,6 +41,7 @@ export function ImageForm({
   const [prompt, setPrompt] = useState("");
   const [contentMode, setContentMode] =
     useState<NonNullable<ImageSubmitRequest["content_mode"]>>("standard");
+  const [aspect, setAspect] = useState("1:1");
   const [width, setWidth] = useState<number | null>(null);
   const [height, setHeight] = useState<number | null>(null);
   const [steps, setSteps] = useState<number | null>(null);
@@ -73,6 +75,7 @@ export function ImageForm({
     setModelId(request.model_id ?? "");
     setPrompt(request.prompt ?? "");
     setContentMode(request.content_mode ?? "standard");
+    setAspect(request.width && request.height ? aspectOf(request.width, request.height) : "custom");
     setWidth(request.width ?? null);
     setHeight(request.height ?? null);
     setSteps(request.steps ?? null);
@@ -99,12 +102,13 @@ export function ImageForm({
   const explicitDenied = effectiveContentMode === "explicit" && !canGenerateExplicit;
   const model =
     models.find((item) => item.id === modelId) ?? (reusedRequest ? undefined : models[0]);
-  const capability = preset ? null : capabilityOf(model);
+  const baseCapability = capabilityOf(model);
+  const capability = preset ? null : (model?.mode_capabilities?.[mode] ?? baseCapability);
   useEffect(() => {
-    if (!reusedRequest && capability && !capability.modes.includes(mode)) {
-      setMode(capability.modes[0]);
+    if (!reusedRequest && baseCapability && !baseCapability.modes.includes(mode)) {
+      setMode(baseCapability.modes[0]);
     }
-  }, [capability, mode, reusedRequest]);
+  }, [baseCapability, mode, reusedRequest]);
   const missingModel = preset === null && !models.some((item) => item.id === modelId);
   const unsupportedMode = Boolean(capability && !capability.modes.includes(mode));
   const unsupportedControlLoras = mode === "control" && loras.length > 0;
@@ -134,6 +138,47 @@ export function ImageForm({
   );
   const sourceWidth = width ?? capability?.default_width ?? null;
   const sourceHeight = height ?? capability?.default_height ?? null;
+  const ratio = aspectRatios.find((r) => r.id === aspect) ?? aspectRatios[0];
+  const sizeEdges = [
+    ...new Set([
+      512,
+      1024,
+      1536,
+      1980,
+      Math.max(capability?.default_width ?? 0, capability?.default_height ?? 0),
+    ]),
+  ].filter((edge) => edge > 0);
+  const sizeOptions = capability
+    ? sizeEdges
+        .filter((edge) => edge <= Math.max(capability.max_width, capability.max_height))
+        .map((edge) => ({ edge, size: fitImageSize(edge, ratio, capability) }))
+        .filter((option) => option.size !== null)
+    : [];
+  const currentSize =
+    sizeOptions.find(
+      (option) => option.size?.width === sourceWidth && option.size?.height === sourceHeight,
+    )?.edge ?? "custom";
+  const invalidSize = Boolean(
+    capability &&
+    sourceWidth &&
+    sourceHeight &&
+    !validImageSize(sourceWidth, sourceHeight, capability),
+  );
+  const changeAspect = (id: string) => {
+    setAspect(id);
+    if (id === "custom" || !capability) return;
+    const nextRatio = aspectRatios.find((r) => r.id === id);
+    if (!nextRatio) return;
+    const next =
+      fitImageSize(Math.max(sourceWidth ?? 1024, sourceHeight ?? 1024), nextRatio, capability) ??
+      sizeEdges
+        .map((edge) => fitImageSize(edge, nextRatio, capability))
+        .find((size) => size !== null);
+    if (next) {
+      setWidth(next.width);
+      setHeight(next.height);
+    }
+  };
   const upscaleExceedsBounds = Boolean(
     upscale &&
     sourceWidth &&
@@ -164,7 +209,8 @@ export function ImageForm({
     unavailableUpscale ||
     upscaleExceedsBounds ||
     tooManyLoras ||
-    invalidLoraScale;
+    invalidLoraScale ||
+    invalidSize;
 
   const submit = async () => {
     const text = prompt.trim();
@@ -324,10 +370,6 @@ export function ImageForm({
           <p role="alert">Explicit image access is required for these settings.</p>
         )}
       </div>
-      <button className="button" type="submit" disabled={cannotSubmit}>
-        {disabled ? "Submitting…" : "Generate"}
-      </button>
-      {feedback}
       {capability && (
         <div className="image-settings-grid">
           <label>
@@ -335,218 +377,135 @@ export function ImageForm({
             <select
               aria-label="Image mode"
               value={mode}
-              onChange={(event) =>
-                setMode(event.target.value as NonNullable<ImageSubmitRequest["mode"]>)
-              }
+              onChange={(event) => {
+                setMode(event.target.value as NonNullable<ImageSubmitRequest["mode"]>);
+                setWidth(null);
+                setHeight(null);
+                setAspect("1:1");
+                if (event.target.value === "img2img" && !strength) setStrength("0.7");
+              }}
             >
-              {capability.modes.map((available) => (
+              {(baseCapability?.modes ?? capability.modes).map((available) => (
                 <option key={available} value={available}>
-                  {available}
+                  {
+                    {
+                      txt2img: "Create from text",
+                      img2img: "Transform an image",
+                      fill: "Edit an area",
+                      control: "Follow a reference",
+                    }[available]
+                  }
                 </option>
               ))}
             </select>
           </label>
-          <label>
-            Width
-            <input
-              aria-label="Image width"
-              type="number"
-              min={capability.min_width}
-              max={capability.max_width}
-              step={8}
-              placeholder={String(capability.default_width ?? capability.min_width)}
-              value={width ?? ""}
-              onChange={(event) =>
-                setWidth(event.target.value === "" ? null : Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            Height
-            <input
-              aria-label="Image height"
-              type="number"
-              min={capability.min_height}
-              max={capability.max_height}
-              step={8}
-              placeholder={String(capability.default_height ?? capability.min_height)}
-              value={height ?? ""}
-              onChange={(event) =>
-                setHeight(event.target.value === "" ? null : Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            Steps
-            <input
-              aria-label="Image steps"
-              type="number"
-              min={capability.min_steps}
-              max={capability.max_steps}
-              placeholder={String(capability.default_steps ?? capability.min_steps)}
-              value={steps ?? ""}
-              onChange={(event) =>
-                setSteps(event.target.value === "" ? null : Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            Images
-            <input
-              aria-label="Image count"
-              type="number"
-              min={1}
-              max={capability.max_outputs}
-              placeholder="1"
-              value={count ?? ""}
-              onChange={(event) =>
-                setCount(event.target.value === "" ? null : Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            Seed
-            <input
-              aria-label="Image seed"
-              type="number"
-              min={0}
-              placeholder="random"
-              value={seed ?? ""}
-              onChange={(event) =>
-                setSeed(event.target.value === "" ? null : Number(event.target.value))
-              }
-            />
-          </label>
-          <label>
-            Guidance
-            <input
-              aria-label="Image guidance"
-              type="number"
-              min={capability.min_guidance}
-              max={capability.max_guidance}
-              step="any"
-              value={guidance ?? ""}
-              placeholder={capability.default_guidance ?? "0"}
-              onChange={(event) => setGuidance(event.target.value || null)}
-            />
-          </label>
-          {capability.supports_negative_prompt && (
+          <p className="image-mode-help">
+            {
+              {
+                txt2img: "Describe the image you want to create.",
+                img2img:
+                  "Upload a source image and describe how it should change. Lower strength preserves more of the original.",
+                fill: "Upload your image and a matching mask. White mask areas are regenerated; black areas are preserved.",
+                control: "Upload a reference image to guide the outlines and composition.",
+              }[mode]
+            }
+          </p>
+          <fieldset className="image-size-controls">
+            <legend>Output size</legend>
             <label>
-              Negative prompt
-              <textarea
-                aria-label="Image negative prompt"
-                value={negativePrompt}
-                maxLength={4000}
-                onChange={(event) => setNegativePrompt(event.target.value)}
-              />
+              Aspect ratio
+              <select
+                aria-label="Image aspect ratio"
+                value={aspect}
+                onChange={(event) => changeAspect(event.target.value)}
+              >
+                {aspectRatios.map((r) => (
+                  <option key={r.id} value={r.id} disabled={!fitImageSize(1980, r, capability)}>
+                    {r.label}
+                  </option>
+                ))}
+                <option value="custom">Custom dimensions</option>
+              </select>
             </label>
-          )}
-          {capability.max_loras > 0 && (
-            <fieldset>
-              <legend>LoRA adapters</legend>
-              {loras.map((selected, index) => (
-                <div key={selected.model_id}>
-                  <span>
-                    {model?.loras?.find((item) => item.id === selected.model_id)?.display_name ??
-                      "Unavailable adapter"}
-                  </span>
-                  <label>
-                    Scale {index + 1}
-                    <input
-                      aria-label={`LoRA scale ${index + 1}`}
-                      type="number"
-                      min={-2}
-                      max={2}
-                      step="any"
-                      value={selected.scale}
-                      onChange={(event) =>
-                        setLoras((current) =>
-                          current.map((item, position) =>
-                            position === index ? { ...item, scale: event.target.value } : item,
-                          ),
-                        )
-                      }
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    aria-label={`Remove LoRA ${index + 1}`}
-                    onClick={() =>
-                      setLoras((current) => current.filter((_, position) => position !== index))
-                    }
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-              <label>
-                Add LoRA
-                <select
-                  aria-label="Add LoRA"
-                  value=""
-                  disabled={loras.length >= capability.max_loras}
-                  onChange={(event) => {
-                    const id = event.target.value;
-                    if (id) setLoras((current) => [...current, { model_id: id, scale: "1" }]);
-                  }}
-                >
-                  <option value="">Choose adapter</option>
-                  {(model?.loras ?? [])
-                    .filter((available) => !loras.some((item) => item.model_id === available.id))
-                    .map((available) => (
-                      <option key={available.id} value={available.id}>
-                        {available.display_name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </fieldset>
-          )}
-          {(model?.upscalers?.length ?? 0) > 0 && (
-            <fieldset>
-              <legend>Upscale</legend>
-              <label>
-                Upscale model
-                <select
-                  aria-label="Upscale model"
-                  value={upscale?.model_id ?? ""}
-                  onChange={(event) =>
-                    setUpscale(
-                      event.target.value
-                        ? { model_id: event.target.value, factor: upscale?.factor ?? 2 }
-                        : null,
-                    )
+            <label>
+              Resolution
+              <select
+                aria-label="Image resolution"
+                value={currentSize}
+                onChange={(event) => {
+                  const selected = sizeOptions.find(
+                    (option) => option.edge === Number(event.target.value),
+                  );
+                  if (selected?.size) {
+                    setWidth(selected.size.width);
+                    setHeight(selected.size.height);
                   }
-                >
-                  <option value="">No upscale</option>
-                  {model?.upscalers?.map((available) => (
-                    <option key={available.id} value={available.id}>
-                      {available.display_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {upscale && (
+                }}
+              >
+                {sizeOptions.map((option) => (
+                  <option key={option.edge} value={option.edge}>
+                    {option.size?.width} × {option.size?.height}
+                  </option>
+                ))}
+                {currentSize === "custom" && <option value="custom">Custom size</option>}
+              </select>
+            </label>
+            <div className="image-size-summary">
+              <span
+                className="image-aspect-preview"
+                style={{ aspectRatio: `${sourceWidth ?? 1} / ${sourceHeight ?? 1}` }}
+                aria-hidden="true"
+              />
+              <span>
+                <strong>
+                  {sourceWidth} × {sourceHeight} px
+                </strong>
+                <small>
+                  Exact output · supported up to {capability.max_width} × {capability.max_height}
+                </small>
+              </span>
+            </div>
+            {invalidSize && (
+              <p role="alert">Choose dimensions within this model’s supported limits.</p>
+            )}
+            <details className="image-custom-size">
+              <summary>Custom width and height</summary>
+              <div>
                 <label>
-                  Upscale factor
-                  <select
-                    aria-label="Upscale factor"
-                    value={upscale.factor}
-                    onChange={(event) =>
-                      setUpscale((current) =>
-                        current
-                          ? { ...current, factor: Number(event.target.value) as 2 | 4 }
-                          : null,
-                      )
-                    }
-                  >
-                    <option value={2}>2×</option>
-                    <option value={4}>4×</option>
-                  </select>
+                  Width
+                  <input
+                    aria-label="Image width"
+                    type="number"
+                    min={capability.min_width}
+                    max={capability.max_width}
+                    step={1}
+                    placeholder={String(capability.default_width ?? capability.min_width)}
+                    value={width ?? ""}
+                    onChange={(event) => {
+                      setAspect("custom");
+                      setWidth(event.target.value === "" ? null : Number(event.target.value));
+                    }}
+                  />
                 </label>
-              )}
-            </fieldset>
-          )}
+                <label>
+                  Height
+                  <input
+                    aria-label="Image height"
+                    type="number"
+                    min={capability.min_height}
+                    max={capability.max_height}
+                    step={1}
+                    placeholder={String(capability.default_height ?? capability.min_height)}
+                    value={height ?? ""}
+                    onChange={(event) => {
+                      setAspect("custom");
+                      setHeight(event.target.value === "" ? null : Number(event.target.value));
+                    }}
+                  />
+                </label>
+              </div>
+            </details>
+          </fieldset>
           {(mode === "img2img" || mode === "fill") && (
             <ImageInputField
               label="Source image"
@@ -637,29 +596,214 @@ export function ImageForm({
               </label>
             </fieldset>
           )}
+          <details className="image-advanced">
+            <summary>Advanced settings</summary>
+            <div className="image-settings-grid">
+              <label>
+                Steps
+                <input
+                  aria-label="Image steps"
+                  type="number"
+                  min={capability.min_steps}
+                  max={capability.max_steps}
+                  placeholder={String(capability.default_steps ?? capability.min_steps)}
+                  value={steps ?? ""}
+                  onChange={(event) =>
+                    setSteps(event.target.value === "" ? null : Number(event.target.value))
+                  }
+                />
+              </label>
+              <label>
+                Images
+                <input
+                  aria-label="Image count"
+                  type="number"
+                  min={1}
+                  max={capability.max_outputs}
+                  placeholder="1"
+                  value={count ?? ""}
+                  onChange={(event) =>
+                    setCount(event.target.value === "" ? null : Number(event.target.value))
+                  }
+                />
+              </label>
+              <label>
+                Seed
+                <input
+                  aria-label="Image seed"
+                  type="number"
+                  min={0}
+                  placeholder="random"
+                  value={seed ?? ""}
+                  onChange={(event) =>
+                    setSeed(event.target.value === "" ? null : Number(event.target.value))
+                  }
+                />
+              </label>
+              <label>
+                Guidance
+                <input
+                  aria-label="Image guidance"
+                  type="number"
+                  min={capability.min_guidance}
+                  max={capability.max_guidance}
+                  step="any"
+                  value={guidance ?? ""}
+                  placeholder={capability.default_guidance ?? "0"}
+                  onChange={(event) => setGuidance(event.target.value || null)}
+                />
+              </label>
+              {capability.supports_negative_prompt && (
+                <label>
+                  Negative prompt
+                  <textarea
+                    aria-label="Image negative prompt"
+                    value={negativePrompt}
+                    maxLength={4000}
+                    onChange={(event) => setNegativePrompt(event.target.value)}
+                  />
+                </label>
+              )}
+              {capability.max_loras > 0 && (
+                <fieldset>
+                  <legend>LoRA adapters</legend>
+                  {loras.map((selected, index) => (
+                    <div key={selected.model_id}>
+                      <span>
+                        {model?.loras?.find((item) => item.id === selected.model_id)
+                          ?.display_name ?? "Unavailable adapter"}
+                      </span>
+                      <label>
+                        Scale {index + 1}
+                        <input
+                          aria-label={`LoRA scale ${index + 1}`}
+                          type="number"
+                          min={-2}
+                          max={2}
+                          step="any"
+                          value={selected.scale}
+                          onChange={(event) =>
+                            setLoras((current) =>
+                              current.map((item, position) =>
+                                position === index ? { ...item, scale: event.target.value } : item,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        aria-label={`Remove LoRA ${index + 1}`}
+                        onClick={() =>
+                          setLoras((current) => current.filter((_, position) => position !== index))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <label>
+                    Add LoRA
+                    <select
+                      aria-label="Add LoRA"
+                      value=""
+                      disabled={loras.length >= capability.max_loras}
+                      onChange={(event) => {
+                        const id = event.target.value;
+                        if (id) setLoras((current) => [...current, { model_id: id, scale: "1" }]);
+                      }}
+                    >
+                      <option value="">Choose adapter</option>
+                      {(model?.loras ?? [])
+                        .filter(
+                          (available) => !loras.some((item) => item.model_id === available.id),
+                        )
+                        .map((available) => (
+                          <option key={available.id} value={available.id}>
+                            {available.display_name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </fieldset>
+              )}
+              {(model?.upscalers?.length ?? 0) > 0 && (
+                <fieldset>
+                  <legend>Upscale</legend>
+                  <label>
+                    Upscale model
+                    <select
+                      aria-label="Upscale model"
+                      value={upscale?.model_id ?? ""}
+                      onChange={(event) =>
+                        setUpscale(
+                          event.target.value
+                            ? { model_id: event.target.value, factor: upscale?.factor ?? 2 }
+                            : null,
+                        )
+                      }
+                    >
+                      <option value="">No upscale</option>
+                      {model?.upscalers?.map((available) => (
+                        <option key={available.id} value={available.id}>
+                          {available.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {upscale && (
+                    <label>
+                      Upscale factor
+                      <select
+                        aria-label="Upscale factor"
+                        value={upscale.factor}
+                        onChange={(event) =>
+                          setUpscale((current) =>
+                            current
+                              ? { ...current, factor: Number(event.target.value) as 2 | 4 }
+                              : null,
+                          )
+                        }
+                      >
+                        <option value={2}>2×</option>
+                        <option value={4}>4×</option>
+                      </select>
+                    </label>
+                  )}
+                </fieldset>
+              )}
+            </div>
+          </details>
         </div>
       )}
       {limits ? (
-        <aside aria-label="Image storage and retention">
-          <p>
-            {limits.output_retention_hours == null
-              ? "Images are retained until you delete them, subject to your storage quota."
-              : `Images are automatically deleted after ${limits.output_retention_hours} hours.`}
-          </p>
-          <p>
-            Your storage quota: {storageSize(limits.owner_storage_quota_bytes)}. Up to{" "}
-            {limits.pending_per_owner} pending jobs and {limits.daily_outputs_per_owner} accepted
-            images per UTC day.
-          </p>
-          <p>
-            Generation inputs: {storageSize(limits.generation_input_max_bytes)}; recipe PNGs:{" "}
-            {storageSize(limits.recipe_input_max_bytes)}; outputs:{" "}
-            {storageSize(limits.output_max_bytes)}.
-          </p>
-        </aside>
+        <details className="image-storage-details">
+          <summary>Storage and limits</summary>
+          <aside aria-label="Image storage and retention">
+            <p>
+              {limits.output_retention_hours == null
+                ? "Images are retained until you delete them, subject to your storage quota."
+                : `Images are automatically deleted after ${limits.output_retention_hours} hours.`}
+            </p>
+            <p>
+              Your storage quota: {storageSize(limits.owner_storage_quota_bytes)}. Up to{" "}
+              {limits.pending_per_owner} pending jobs and {limits.daily_outputs_per_owner} accepted
+              images per UTC day.
+            </p>
+            <p>
+              Generation inputs: {storageSize(limits.generation_input_max_bytes)}; recipe PNGs:{" "}
+              {storageSize(limits.recipe_input_max_bytes)}; outputs:{" "}
+              {storageSize(limits.output_max_bytes)}.
+            </p>
+          </aside>
+        </details>
       ) : (
         <p role="alert">Storage and retention policy is unavailable. Refresh before generating.</p>
       )}
+      <button className="button" type="submit" disabled={cannotSubmit}>
+        {disabled ? "Submitting…" : "Generate"}
+      </button>
+      {feedback}
       {missingModel && <p role="alert">The source image model is no longer available.</p>}
       {unsupportedMode && <p role="alert">This model does not support the restored image mode.</p>}
       {unsupportedControlLoras && <p role="alert">Control mode cannot use a LoRA stack.</p>}

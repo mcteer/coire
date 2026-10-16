@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from coire_api.db import session_scope
 from coire_api.deps import SessionDep
-from coire_api.images.authorization import CurrentImageUser
+from coire_api.images.authorization import CurrentImageUser, audit_image_refusal
 from coire_api.images.compatible import (
     admit_compatible_job,
     await_image_generation,
@@ -85,6 +85,13 @@ async def generate_image(
         try:
             job_id = await admit_compatible_job(session, principal, body, idempotency_key, settings)
         except ImageForbidden:
+            await session.rollback()
+            await audit_image_refusal(
+                principal,
+                action="image.refused",
+                target_type="route",
+                target_id="POST /v1/images/generations",
+            )
             record_image_request(
                 ImageOperation.COMPATIBLE, ImageOutcome.REFUSED, reason=ImageReason.AUTH
             )

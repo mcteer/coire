@@ -46,7 +46,8 @@ test("keeps private gallery actions usable when a preview fails", async () => {
   );
 
   await screen.findByText("Preview unavailable");
-  expect(screen.getByText("Classifier unavailable; tag is unverified.")).toBeVisible();
+  expect(document.querySelector(".image-gallery-card-body")).toBeNull();
+  expect(document.querySelector(".image-gallery-card time")).toBeNull();
   expect(screen.getByRole("button", { name: "Retry preview" })).toBeEnabled();
   fireEvent.change(screen.getByRole("combobox", { name: "Image tag" }), {
     target: { value: "unknown" },
@@ -55,8 +56,6 @@ test("keeps private gallery actions usable when a preview fails", async () => {
   fireEvent.click(screen.getByRole("button", { name: `Download image ${output.id}` }));
   expect(onDownload).toHaveBeenCalledWith(output);
   fireEvent.click(screen.getByRole("button", { name: `Reuse settings from image ${output.id}` }));
-  expect(screen.getByText("More actions").closest("details")).not.toHaveAttribute("open");
-  fireEvent.click(screen.getByText("More actions"));
   fireEvent.click(screen.getByRole("button", { name: `Regenerate image ${output.id}` }));
   fireEvent.click(
     screen.getByRole("button", { name: `Generate new seed from image ${output.id}` }),
@@ -67,4 +66,36 @@ test("keeps private gallery actions usable when a preview fails", async () => {
   fireEvent.click(screen.getByRole("button", { name: `Delete image ${output.id}` }));
   fireEvent.click(screen.getByRole("button", { name: `Delete image ${output.id}` }));
   await waitFor(() => expect(onDelete).toHaveBeenCalledWith(output.id));
+});
+
+test("bulk deletion retains failed selections and reports partial failure", async () => {
+  const second = { ...output, id: "6c5c5686-52bc-4884-a941-f5fae37db914" };
+  const onDelete = vi.fn(async (id: string) => {
+    if (id === second.id) throw new Error("offline");
+  });
+  render(
+    <ImageGallery
+      outputs={[output, second]}
+      loading={false}
+      tag=""
+      onTagChange={() => {}}
+      nextCursor={null}
+      busyId={null}
+      onDownload={() => {}}
+      onDelete={onDelete}
+      onLoadOlder={() => {}}
+      onReuse={() => {}}
+      onRegenerate={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+  const remove = screen.getByRole("button", {
+    name: "Delete selected 2 selected images permanently",
+  });
+  fireEvent.click(remove);
+  fireEvent.click(remove);
+  await screen.findByRole("alert");
+  expect(screen.getByRole("checkbox", { name: `Select image ${output.id}` })).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: `Select image ${second.id}` })).toBeChecked();
+  expect(onDelete).toHaveBeenCalledTimes(2);
 });

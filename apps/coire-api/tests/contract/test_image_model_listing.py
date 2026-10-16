@@ -18,7 +18,7 @@ from coire_api.images.authorization import require_image_principal
 from coire_api.routes import images
 from coire_core.errors import ImageForbidden
 from coire_core.image_assets import FLUX_FILL_REPO_ID
-from coire_core.models.images import ImageCapabilityProfile, ImageModelList
+from coire_core.models.images import ImageCapabilityProfile, ImageMode, ImageModelList
 from coire_core.models.registry import EngineBackend, ModelKind, ModelSource, ModelState, Visibility
 from coire_core.settings import Settings
 
@@ -265,6 +265,8 @@ async def test_model_picker_lists_only_authorized_compatible_loras(
     assert [item.id for item in listing.items[0].upscalers] == [upscale_id]
     assert [item.id for item in listing.items[0].controls] == [control_id]
     assert "control" in listing.items[0].capability.modes
+    assert listing.items[0].mode_capabilities[ImageMode.CONTROL].max_width == 512
+    assert listing.items[0].mode_capabilities[ImageMode.CONTROL].default_width == 512
 
 
 async def test_model_picker_omits_base_with_unsupported_default(

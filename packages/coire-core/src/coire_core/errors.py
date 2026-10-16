@@ -309,3 +309,11 @@ class UpgradeCollectivePending(UpgradeUnavailable):
 
     code = "upgrade_collective_pending"
     title = "Upgrade collective qualification pending"
+
+
+class ImageContentBlocked(ImageForbidden):
+    code = "image_content_blocked"
+    title = "Image request blocked by content policy"
+
+    def __init__(self) -> None:
+        super().__init__("Sexual content involving minors is prohibited for every account.")

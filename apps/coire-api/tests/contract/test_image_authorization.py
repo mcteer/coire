@@ -211,7 +211,7 @@ def _output(*, tag: str = "normal", mode: str = "standard") -> ImageOutputRow:
                 "safe_error": None,
                 "tagged_at": datetime.now(UTC).isoformat(),
             },
-            recipe={"resolved": {"spec": {"content_mode": mode}}},
+            recipe={"resolved": {"spec": {"content_mode": mode, "prompt": "A ceramic teapot"}}},
         ),
     )
 
@@ -282,18 +282,16 @@ async def test_download_rechecks_policy_explicit_and_classifier_explicit() -> No
 
 async def test_unknown_owner_access_and_shared_view_exclusion() -> None:
     unknown = _output(tag="unknown")
-    assert (
+    with pytest.raises(ImageForbidden):
         await require_downloadable_image_output(
             cast(AsyncSession, FakeOutputSession(unknown, entitlements=[])),
             uuid.uuid4(),
             _user(),
         )
-        is unknown
-    )
     assert output_is_shareable(_output())
     for row in (unknown, _output(tag="explicit"), _output(mode="explicit")):
         assert not output_is_shareable(row)
-    assert output_visible_to_owner(unknown, OWNER, explicit_allowed=False)
+    assert not output_visible_to_owner(unknown, OWNER, explicit_allowed=False)
     assert not output_visible_to_owner(unknown, uuid.uuid4(), explicit_allowed=True)
     assert not output_visible_to_owner(_output(tag="explicit"), OWNER, explicit_allowed=False)
     assert output_visible_to_owner(_output(tag="explicit"), OWNER, explicit_allowed=True)
@@ -379,7 +377,8 @@ def test_every_private_image_route_uses_the_live_guard() -> None:
         for route in app.routes
         if isinstance(route, APIRoute) and route.path.startswith("/api/v1/image")
     ]
-    assert len(private) == 16
+    assert len(private) == 17
+    assert any(route.path == "/api/v1/images/history/deletions" for route in private)
     assert all(
         any(
             dependency.call is authorization.require_image_principal
@@ -387,3 +386,15 @@ def test_every_private_image_route_uses_the_live_guard() -> None:
         )
         for route in private
     )
+
+
+async def test_known_violating_legacy_recipe_is_unreadable_even_with_admin_entitlement() -> None:
+    from coire_core.errors import ImageContentBlocked
+
+    row = _output(mode="explicit", tag="explicit")
+    row.recipe = {"resolved": {"spec": {"content_mode": "explicit", "prompt": "a minor"}}}
+    with pytest.raises(ImageContentBlocked):
+        await require_downloadable_image_output(
+            cast(AsyncSession, FakeOutputSession(row)), uuid.uuid4(), _user(PrincipalKind.ADMIN)
+        )
+    assert not output_visible_to_owner(row, OWNER, explicit_allowed=True)

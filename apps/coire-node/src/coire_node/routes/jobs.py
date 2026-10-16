@@ -259,6 +259,9 @@ async def start_image_validate(
             "manifest_sha256": request.manifest_sha256,
             "reservation_id": str(request.reservation_id),
             "reservation_bytes": reservation.memory_bytes,
+            "resolution_bounds": request.resolution_bounds.model_dump(mode="json")
+            if request.resolution_bounds is not None
+            else None,
             "compatible_base": (
                 request.compatible_base.model_dump(mode="json")
                 if request.compatible_base is not None

@@ -16,8 +16,9 @@ from typing import Protocol, cast
 from PIL import Image
 
 from coire_core.image_assets import FLUX_FILL_REPO_ID
+from coire_core.image_safety import ensure_image_content_allowed
 from coire_core.models.image_worker import ImageWorkerLoadRequest
-from coire_core.models.images import ImageMode, ResolvedImageSpec
+from coire_core.models.images import ImageMode, ResolvedImageSpec, image_canvas_dimensions
 from coire_node.footprint import resident_bytes
 from coire_node.image_runtime.cache import (
     NativeStageCache,
@@ -42,6 +43,10 @@ class ImagePipelineUnavailable(RuntimeError):
 
 class _CallbackRegistry(Protocol):
     def register(self, callback: object) -> None: ...
+
+
+class _TiledModel(Protocol):
+    tiling_config: object | None
 
 
 class _NativeModel(Protocol):
@@ -393,6 +398,7 @@ class MfluxTxt2ImgPipeline:
                 raise ImagePipelineUnavailable()
             return
         spec = resolved.spec
+        ensure_image_content_allowed(spec.prompt, explicit=spec.content_mode == "explicit")
         if self._fill and spec.loras:
             raise ImagePipelineUnavailable()
         if len(spec.loras) + int(spec.upscale is not None) + int(spec.control is not None) != len(
@@ -503,6 +509,7 @@ class MfluxTxt2ImgPipeline:
         if self.prompt_cache.max_bytes == 0:
             return
         spec = resolved.spec
+        ensure_image_content_allowed(spec.prompt, explicit=spec.content_mode == "explicit")
         for seed in resolved.seeds:
             parts = (
                 self._request.runtime_version,
@@ -525,6 +532,8 @@ class MfluxTxt2ImgPipeline:
         input_paths: dict[uuid.UUID, Path] | None = None,
     ) -> tuple[Image.Image, ...]:
         spec = resolved.spec
+        ensure_image_content_allowed(spec.prompt, explicit=spec.content_mode == "explicit")
+        native_width, native_height = image_canvas_dimensions(spec.width, spec.height)
         init_path: Path | None = None
         mask_path: Path | None = None
         control_path: Path | None = None
@@ -585,6 +594,13 @@ class MfluxTxt2ImgPipeline:
             self.encoder_cache.last_outcome = None
             self.prompt_cache.last_outcome = None
             self._replace_lora_locked(resolved)
+            if self._enforce_memory and not self._fill:
+                # Use the pinned engine's native VAE tiler at expanded sizes. Existing
+                # 512px recipes keep their original decode path and pixel behavior.
+                tiling_module = importlib.import_module("mflux.models.common.vae.tiling_config")
+                cast(_TiledModel, self._model).tiling_config = (
+                    tiling_module.TilingConfig() if native_width * native_height > 512**2 else None
+                )
             if control_path is None and self._native_encoder_hook:
                 self._active_prompt_identity = stage_identity(
                     self._request.runtime_version,
@@ -641,8 +657,8 @@ class MfluxTxt2ImgPipeline:
                     dependency=dependency,
                     control=spec.control,
                     source=control_path,
-                    width=spec.width,
-                    height=spec.height,
+                    width=native_width,
+                    height=native_height,
                     callback=self._callback,
                     edge_cache=self.prompt_cache,
                     edge_key=edge_key,
@@ -676,6 +692,8 @@ class MfluxTxt2ImgPipeline:
         control_stage: LocalCannyControlStage | None,
     ) -> tuple[Image.Image, ...]:
         spec = resolved.spec
+        ensure_image_content_allowed(spec.prompt, explicit=spec.content_mode == "explicit")
+        native_width, native_height = image_canvas_dimensions(spec.width, spec.height)
         images: list[Image.Image] = []
         offset = (
             max(1, int(spec.steps * float(spec.strength)))
@@ -703,8 +721,8 @@ class MfluxTxt2ImgPipeline:
                             image_path=init_path,
                             masked_image_path=mask_path,
                             num_inference_steps=spec.steps,
-                            height=spec.height,
-                            width=spec.width,
+                            height=native_height,
+                            width=native_width,
                             guidance=float(spec.guidance),
                         )
                         if self._fill and init_path is not None and mask_path is not None
@@ -712,8 +730,8 @@ class MfluxTxt2ImgPipeline:
                             seed=seed,
                             prompt=spec.prompt,
                             num_inference_steps=spec.steps,
-                            height=spec.height,
-                            width=spec.width,
+                            height=native_height,
+                            width=native_width,
                             guidance=0.0,
                             negative_prompt=None,
                             image_path=init_path,
@@ -733,9 +751,17 @@ class MfluxTxt2ImgPipeline:
                     )
                     if not isinstance(image, Image.Image):
                         raise ImagePipelineUnavailable()
-                    if image.mode != "RGB" or image.size != (spec.width, spec.height):
+                    if image.mode != "RGB" or image.size != (native_width, native_height):
                         image.close()
                         raise ImagePipelineUnavailable()
+                    if image.size != (spec.width, spec.height):
+                        # mflux rounds down unaligned dimensions. Render a full latent
+                        # canvas first, then crop symmetrically without stretching pixels.
+                        left = (native_width - spec.width) // 2
+                        top = (native_height - spec.height) // 2
+                        cropped = image.crop((left, top, left + spec.width, top + spec.height))
+                        image.close()
+                        image = cropped
                     if spec.upscale is not None:
                         if self._store is None:
                             image.close()

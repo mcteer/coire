@@ -54,6 +54,7 @@ class ImageOperation(StrEnum):
     DOWNLOAD = "download"
     CANCEL = "cancel"
     DELETE = "delete"
+    HISTORY_DELETE = "history_delete"
     PRESET_MUTATION = "preset_mutation"
     PRESET_LIST = "preset_list"
     MODEL_LIST = "model_list"
