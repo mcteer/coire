@@ -363,3 +363,46 @@
 .image-settings-grid > label:has(textarea) {
   grid-column: 1 / -1;
 }
+
+.image-timeline,
+.image-submission-feedback {
+  padding: var(--s-4);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-ink);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  overflow-wrap: anywhere;
+  scroll-margin-top: 100px;
+}
+.image-timeline p {
+  margin: 0 0 var(--s-3);
+}
+.image-progress-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+.image-timeline progress {
+  width: 100%;
+  accent-color: var(--accent-ink);
+  margin-bottom: var(--s-3);
+}
+.image-timeline details {
+  margin-bottom: var(--s-3);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+.image-timeline summary {
+  cursor: pointer;
+  margin-bottom: var(--s-2);
+}
+.image-progress-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--accent-ink);
+}
+#image-library {
+  scroll-margin-top: 100px;
+}

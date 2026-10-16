@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ImageModelList, ImagePresetList, ImageSubmitRequest } from "../../api/images";
 import { ImageInputField } from "./ImageInputField";
 import { PresetRail } from "./PresetRail";
@@ -18,6 +18,7 @@ function storageSize(bytes: number): string {
 
 export function ImageForm({
   models,
+  feedback,
   presets,
   disabled,
   onSubmit,
@@ -25,6 +26,7 @@ export function ImageForm({
   limits = null,
   canGenerateExplicit = false,
 }: {
+  feedback?: ReactNode;
   models: ImageModelList["items"];
   presets: ImagePresetList["items"];
   disabled: boolean;
@@ -325,6 +327,7 @@ export function ImageForm({
       <button className="button" type="submit" disabled={cannotSubmit}>
         {disabled ? "Submitting…" : "Generate"}
       </button>
+      {feedback}
       {capability && (
         <div className="image-settings-grid">
           <label>

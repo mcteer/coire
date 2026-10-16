@@ -16,7 +16,7 @@ test("shows queue and progress and stops only before a terminal server state", (
       busy={false}
     />,
   );
-  expect(screen.getByRole("status")).toHaveTextContent("queued");
+  expect(screen.getByRole("status")).toHaveTextContent("Queued");
   expect(screen.getByText("Prompt cache status unavailable for this job.")).toBeInTheDocument();
   expect(screen.getByText("Worker residency status unavailable for this job.")).toBeInTheDocument();
   expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
@@ -66,7 +66,9 @@ test("reports measured cache reuse, eviction, and observed worker residency", ()
     />,
   );
   expect(screen.getByText("Prompt cache reused.")).toBeInTheDocument();
-  expect(screen.getByText("Worker observed resident at the last progress update.")).toBeInTheDocument();
+  expect(
+    screen.getByText("Worker observed resident at the last progress update."),
+  ).toBeInTheDocument();
   rerender(
     <ImageTimeline
       jobId={JOB}
@@ -91,3 +93,67 @@ test("disables stop while cancellation is in flight", () => {
     "Stopping…",
   );
 });
+
+test("explains queue, preparation, transfer and completion with a result action", () => {
+  const view = vi.fn();
+  const props = {
+    jobId: JOB,
+    step: null,
+    totalSteps: null,
+    busy: false,
+    onStop: vi.fn(),
+    onViewResult: view,
+  };
+  const { rerender } = render(<ImageTimeline {...props} state="queued" queuePosition={2} />);
+  expect(screen.getByRole("status")).toHaveTextContent("Queued");
+  expect(screen.getByText(/Position 2/)).toBeInTheDocument();
+  rerender(<ImageTimeline {...props} state="reserving" />);
+  expect(screen.getByRole("status")).toHaveTextContent("Preparing generation");
+  rerender(<ImageTimeline {...props} state="transferring" />);
+  expect(screen.getByRole("status")).toHaveTextContent("Saving your image");
+  rerender(<ImageTimeline {...props} state="succeeded" />);
+  expect(screen.getByRole("status")).toHaveTextContent("Image ready");
+  fireEvent.click(screen.getByRole("button", { name: "View in library" }));
+  expect(view).toHaveBeenCalledOnce();
+});
+
+test("does not invent a percentage without a measured total and explains reconnecting", () => {
+  render(
+    <ImageTimeline
+      jobId={JOB}
+      state="running"
+      step={null}
+      totalSteps={null}
+      onStop={vi.fn()}
+      busy={false}
+      error="Error: stream ended"
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent("Generating your image");
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  expect(screen.getByText(/Reconnecting to live progress/)).toBeInTheDocument();
+});
+
+test.each(["failed", "cancelled"] as const)(
+  "makes %s terminal with no misleading result or stop action",
+  (state) => {
+    render(
+      <ImageTimeline
+        jobId={JOB}
+        state={state}
+        step={null}
+        totalSteps={null}
+        busy={false}
+        onStop={vi.fn()}
+        onViewResult={vi.fn()}
+        error={state === "failed" ? "worker_unavailable" : null}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      state === "failed" ? "Generation failed" : "Generation stopped",
+    );
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    if (state === "failed")
+      expect(screen.getByRole("alert")).toHaveTextContent("worker_unavailable");
+  },
+);

@@ -183,3 +183,41 @@ pipeline. II-a: existing hardened separate web/API services. III: generated cont
 IV: canonical audited entitlement and refusal evidence; secrets remain Keychain-sourced.
 VI: existing route metrics/spans/alerts retained, refusal uses the established content-free
 audit helper. VII: amended spec/plan/tasks, regression/contract and real Studio/browser gates.
+
+## Image progress visibility correction — issue #103 (2026-10-16)
+
+Bug fix on `fix/103-image-generation-feedback`, stacked on this feature's validated
+sidebar/theme build. Existing requirements are 015 US1 / FR-005 / FR-007 / FR-026 /
+FR-034 and SC-010. The timeline was rendered outside the generation form, and its
+missing layout class meant desktop CSS could place it below the library. Submission
+also had no durable, nearby progress acknowledgment.
+
+Plan executed: reproduce with regression tests; render submission and job feedback
+immediately beneath Generate; retain existing SSE and cancellation; explain each
+server state; disclose technical details; recover active observation on reload; add
+a library focus action; validate in WebKit on the installed web image. No API,
+engine, schema, dependency, access policy or telemetry contract changes were needed.
+Constitution I–V boundaries are unchanged; VI retains existing job events/metrics/
+audit/dashboard/alerts; VII uses the existing approved image-progress specification,
+issue-first bug workflow, regression tests and real-Studio acceptance.
+
+Validation: 288 tests in 66 web files pass without skips; strict TypeScript/Vite,
+ESLint, Prettier and diff checks pass. Regression cases cover immediate feedback before
+a receipt, placement beside Generate, queue/preparation/transfer/completion, measured
+step progress, connection recovery, failure/cancellation and terminal action behavior.
+Production image policy passes all seven rules; Trivy reports zero CRITICAL findings
+including unfixed, and an SPDX SBOM was generated.
+
+Actual headless Playwright WebKit submitted a 512×512, four-step still-life image
+through the deployed form. Job `01M52RX5ASK7MQ13M0F8VA3EHR` succeeded with one output.
+Submission, accepted, mobile-after-reload, completion, library focus and dark-mobile
+screenshots were inspected; no page errors or horizontal overflow. The test delayed
+the outgoing submit request by 800 ms to inspect the real pending UI; no API result
+or job event was mocked. The test output was deleted through its authenticated owner
+API after acceptance; browser contexts were closed. No test container or volume remains.
+Private evidence and rollback compose snapshot: `~/.coire/qualification/103/`.
+
+Live web tag: `coire-web:103-image-progress`; image:
+`sha256:94174f45a4c62fd7c93250595b783845cb8a2ff20d569ff690c5b7b7febc9d24`.
+Only web changed; all 14 other container identities/images, including the validated
+API, were preserved. Rollback is the preceding `coire-web:025-color-themes` image.

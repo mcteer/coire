@@ -119,3 +119,19 @@ Only web is rebuilt/deployed; retain API audit-fix image73a0fd0 and existing exp
 entitlement/controls. Snapshot current web/compose before --no-deps recreation. For rollback
 use web135c7a20 (the restored layout without palette editor), preserving the API image.
 Private current receipts/screenshots are under `~/.coire/qualification/025/palettes-*`.
+
+### Image submission feedback (issue #103)
+
+The generation form acknowledges submission immediately beneath Generate. Accepted jobs
+show queue position when supplied, preparation, generation steps when measured, saving,
+and a terminal ready/failed/stopped state. Job identifiers and cache/worker diagnostics
+are under **Job details**. Stop remains available until the server confirms a terminal
+state. A dropped event connection is labelled as reconnecting; it never implies that
+an accepted job failed. **View in library** clears the tag filter and moves keyboard
+focus to the library. Reloading Images resumes observation of an active job from the
+owner's job list; **View progress** selects another listed job without resubmitting it.
+
+This uses the existing authenticated image SSE/API contracts and observability. No
+percentage, queue position or completion time is invented. There is no engine or API
+change. Roll back by restoring the previous web image in the installed compose manifest
+and recreating only `coire-web` with `--no-deps`; preserve the API and all data volumes.
