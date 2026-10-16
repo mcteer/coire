@@ -11,7 +11,7 @@ from pathlib import Path
 from types import ModuleType, TracebackType
 from unittest.mock import patch
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from coire_core.image_assets import CONTROL_UNION_FILE, CONTROL_UNION_REPO_ID
 from coire_core.models.image_worker import ImageWorkerLoadRequest
@@ -129,9 +129,14 @@ class LocalCannyControlStage:
                 self._edge_path.write_bytes(cached)
             else:
                 with Image.open(self.source) as raw:
-                    if raw.size != (self.width, self.height):
-                        raise ImageControlUnavailable()
-                    gray = raw.convert("L")
+                    # Source manifests describe the original normalized input. Fit only
+                    # the worker-local conditioning canvas; never stretch or crop it.
+                    gray = ImageOps.pad(
+                        raw.convert("L"),
+                        (self.width, self.height),
+                        method=Image.Resampling.LANCZOS,
+                        color=255,
+                    )
                     cv2 = importlib.import_module("cv2")
                     np = importlib.import_module("numpy")
                     edges = cv2.Canny(

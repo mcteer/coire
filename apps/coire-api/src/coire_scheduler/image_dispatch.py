@@ -535,8 +535,14 @@ async def _bound_inputs(
             or _DIGEST.fullmatch(row.normalized_sha256) is None
             or row.normalized_bytes is None
             or not 0 < row.normalized_bytes <= 10 * 1024 * 1024
-            or row.normalized_width != spec.width
-            or row.normalized_height != spec.height
+            or row.normalized_width is None
+            or row.normalized_height is None
+            or row.normalized_width < 1
+            or row.normalized_height < 1
+            or (
+                purpose != "control"
+                and (row.normalized_width != spec.width or row.normalized_height != spec.height)
+            )
         ):
             raise ImageConflict("bound image input is unavailable")
         manifests.append(
@@ -545,8 +551,8 @@ async def _bound_inputs(
                 purpose=purpose,
                 sha256=row.normalized_sha256,
                 byte_count=row.normalized_bytes,
-                width=spec.width,
-                height=spec.height,
+                width=row.normalized_width,
+                height=row.normalized_height,
             )
         )
     return tuple(manifests)

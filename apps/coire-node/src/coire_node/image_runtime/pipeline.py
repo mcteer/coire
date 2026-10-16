@@ -648,7 +648,7 @@ class MfluxTxt2ImgPipeline:
                         str(spec.height),
                         str(spec.control.low_threshold),
                         str(spec.control.high_threshold),
-                        "canny-v1",
+                        "canny-fit-pad-v2",
                     ),
                 )
                 control_stage = LocalCannyControlStage(

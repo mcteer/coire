@@ -479,10 +479,8 @@ def _check_inputs(
     if len(purposes) != required_count or set(purposes) != {item.input_id for item in manifests}:
         raise ValueError("inputs differ from requested image bindings")
     for item in manifests:
-        if (
-            item.purpose != purposes[item.input_id]
-            or item.width != spec.width
-            or item.height != spec.height
+        if item.purpose != purposes[item.input_id] or (
+            item.purpose != "control" and (item.width != spec.width or item.height != spec.height)
         ):
             raise ValueError("input purpose or dimensions differ from image request")
 

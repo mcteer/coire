@@ -26,6 +26,7 @@ from coire_core.models.image_worker import (
     NodeImageStartRequest,
 )
 from coire_core.models.images import (
+    ImageControl,
     ImageInputDigest,
     ImageMode,
     ImageSpec,
@@ -338,4 +339,47 @@ def test_worker_run_rejects_input_digest_substitution() -> None:
                 "inputs": [{**manifest.model_dump(), "width": 256}],
                 "deadline_at": datetime.now(UTC),
             }
+        )
+
+
+def test_control_reference_manifest_keeps_source_size_independent_of_output() -> None:
+    source = uuid.uuid4()
+    spec = ImageSpec(
+        model_id=MODEL,
+        mode=ImageMode.CONTROL,
+        prompt="A vase",
+        width=512,
+        height=512,
+        steps=4,
+        guidance=Decimal(0),
+        seed=7,
+        control=ImageControl(image_id=source, model_id=uuid.uuid4()),
+    )
+    resolved = ResolvedImageSpec(
+        spec=spec,
+        seeds=(7,),
+        pipeline_version="mflux-0.20.0",
+        environment_fingerprint="a" * 64,
+        model_sha256="b" * 64,
+        spec_hash=canonical_spec_hash(spec),
+        inputs=(ImageInputDigest(input_id=source, sha256="c" * 64, width=1200, height=800),),
+    )
+    manifest = NodeImageInputManifest(
+        input_id=source, purpose="control", sha256="c" * 64, byte_count=1024, width=1200, height=800
+    )
+    values = {
+        "job_id": JOB,
+        "attempt": 1,
+        "fence": 1,
+        "instance_id": INSTANCE,
+        "resolved": resolved,
+        "inputs": (manifest,),
+        "deadline_at": datetime.now(UTC),
+    }
+    command = ImageWorkerRunRequest.model_validate(values)
+    assert command.inputs[0].width == 1200
+    assert command.resolved.spec.width == 512
+    with pytest.raises(ValidationError, match="manifest"):
+        ImageWorkerRunRequest.model_validate(
+            {**values, "inputs": (manifest.model_copy(update={"width": 512}),)}
         )
