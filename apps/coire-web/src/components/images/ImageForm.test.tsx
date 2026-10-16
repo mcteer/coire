@@ -477,3 +477,50 @@ test("fresh direct image requests carry the selected explicit mode", async () =>
     ),
   );
 });
+
+test("photo editing retains its reference without a strength or Canny control", async () => {
+  const onSubmit = vi.fn(async () => {});
+  const editModels = [
+    {
+      ...models[0],
+      capability: {
+        ...models[0].capability,
+        modes: ["edit"],
+        min_steps: 4,
+        max_steps: 40,
+        default_steps: 40,
+        min_guidance: "4",
+        max_guidance: "4",
+        default_guidance: "4",
+      },
+    },
+  ] as ImageModelList["items"];
+  render(
+    <ImageForm
+      models={editModels}
+      presets={[]}
+      disabled={false}
+      onSubmit={onSubmit}
+      reuse={{
+        request: {
+          schema_version: 1,
+          model_id: modelId,
+          mode: "edit",
+          prompt: "Keep her facial features, change the setting",
+          init_image_id: inputId,
+        },
+        revision: 1,
+      }}
+    />,
+  );
+  expect(screen.getByRole("option", { name: "Edit a photo" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Source image")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Image strength")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Control model")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "edit", init_image_id: inputId, strength: null }),
+    ),
+  );
+});

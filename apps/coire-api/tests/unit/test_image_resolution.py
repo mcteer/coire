@@ -190,3 +190,32 @@ def test_basic_resolution_refuses_negative_prompt_even_if_profile_advertises_it(
             _profile(supports_negative_prompt=True),
             random_seed=lambda: 123,
         )
+
+
+def test_photo_edit_uses_qualified_cfg_without_denoising_strength() -> None:
+    source = uuid.uuid4()
+    profile = _profile(
+        modes=["edit"],
+        max_width=1980,
+        max_height=1980,
+        max_pixels=1980**2,
+        default_width=1024,
+        default_height=1024,
+        default_steps=40,
+        max_steps=40,
+        min_guidance="4",
+        max_guidance="4",
+        default_guidance="4",
+        max_loras=0,
+    )
+    request = ImageSubmitRequest(
+        model_id=MODEL,
+        mode=ImageMode.EDIT,
+        prompt="Keep her face, change the room",
+        init_image_id=source,
+    )
+    resolved = resolve_basic_image_spec(request, profile)
+    assert resolved.mode is ImageMode.EDIT and resolved.init_image_id == source
+    assert resolved.guidance == 4 and resolved.steps == 40 and resolved.strength is None
+    with pytest.raises(ImageValidationError):
+        resolve_basic_image_spec(request.model_copy(update={"strength": Decimal("0.7")}), profile)

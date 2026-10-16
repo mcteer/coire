@@ -13,14 +13,19 @@ from typing import Literal, cast
 
 from dbos import DBOS
 from opentelemetry import metrics, trace
+from sqlalchemy import select
 
 from coire_api.db import ImageInputRow, session_scope
-from coire_api.file_worker_client import FileWorkerClient, FileWorkerParseRefused
+from coire_api.file_worker_client import FileWorkerClient, FileWorkerError, FileWorkerParseRefused
 from coire_api.images.quota import _QUOTA_LOCK, settle_storage_hold
-from coire_core.errors import ImageConflict
-from coire_core.models.files import ImageFileProcessRequest, ImageFileProcessResult
+from coire_core.errors import ImageConflict, ImageStorageUnavailable
+from coire_core.models.files import (
+    ImageFileProcessRequest,
+    ImageFileProcessResult,
+    ImageInputPurgeRequest,
+)
 from coire_core.models.image_worker import ImageRecipeParseRequest
-from coire_core.settings import get_settings
+from coire_core.settings import Settings, get_settings
 
 tracer = trace.get_tracer("coire.scheduler.image_inputs")
 processed_total = metrics.get_meter("coire.scheduler.image_inputs").create_counter(
@@ -239,3 +244,63 @@ async def image_normalize_step(input_id: str) -> None:
 @DBOS.workflow(name="coire.image.input.normalize", max_recovery_attempts=100)
 async def image_normalize_workflow(input_id: str) -> None:
     await image_normalize_step(input_id)
+
+
+async def purge_normalized_input_copy(settings: Settings, input_id: uuid.UUID) -> bool:
+    """Scheduler owns the existing worker credential; API alone owns original/quota purge."""
+    async with session_scope() as session:
+        row = await session.get(ImageInputRow, input_id, with_for_update=True)
+        if (
+            row is None
+            or row.state not in {"failed", "deleting"}
+            or row.purpose not in {"init", "mask", "control"}
+            or row.active_references != 0
+            or row.purged_at is not None
+        ):
+            return False
+        if row.state == "deleting" and (
+            row.deleted_at is None
+            or (row.held_bytes > 0 and row.deleted_at > datetime.now(UTC) - timedelta(hours=1))
+        ):
+            return False
+        with tracer.start_as_current_span("coire.scheduler.image_input.purge"):
+            try:
+                async with FileWorkerClient(settings) as client:
+                    await client.purge_image_input(ImageInputPurgeRequest(input_id=row.id))
+            except FileWorkerError as exc:
+                raise ImageStorageUnavailable() from exc
+        return True
+
+
+_purge_after: uuid.UUID | None = None
+
+
+async def sweep_normalized_input_copies(settings: Settings) -> int:
+    global _purge_after
+    async with session_scope() as session:
+        query = (
+            select(ImageInputRow.id)
+            .where(
+                ImageInputRow.state.in_(["failed", "deleting"]),
+                ImageInputRow.purpose.in_(["init", "mask", "control"]),
+                ImageInputRow.active_references == 0,
+                ImageInputRow.purged_at.is_(None),
+            )
+            .order_by(ImageInputRow.id)
+            .limit(25)
+        )
+        rows = list(
+            await session.scalars(
+                query.where(ImageInputRow.id > _purge_after) if _purge_after else query
+            )
+        )
+        if not rows and _purge_after is not None:
+            rows = list(await session.scalars(query))
+        _purge_after = rows[-1] if rows else None
+    count = 0
+    for input_id in rows:
+        try:
+            count += int(await purge_normalized_input_copy(settings, input_id))
+        except ImageStorageUnavailable:
+            processed_total.add(1, {"outcome": "purge_failed"})
+    return count

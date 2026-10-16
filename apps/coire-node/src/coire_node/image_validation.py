@@ -22,6 +22,7 @@ from coire_core.image_assets import (
     CONTROL_UNION_FILE,
     CONTROL_UNION_REPO_ID,
     FLUX_FILL_REPO_ID,
+    QWEN_EDIT_REPO_IDS,
     SEEDVR2_3B_FILES,
     SEEDVR2_3B_REPO_ID,
 )
@@ -214,6 +215,8 @@ def _validate_image_asset_inner(
             baseline_physical=baseline_physical,
             reservation_bytes=reservation_bytes,
         )
+    if manifest.repo_id in QWEN_EDIT_REPO_IDS:
+        return _validate_qwen_edit(store, load, request, reservation_bytes=reservation_bytes)
     pipeline = MfluxTxt2ImgPipeline.load(store, load)
     observe_footprint()
     images = pipeline.generate(
@@ -330,6 +333,115 @@ def _validate_image_asset_inner(
         image_capability_profile=profile,
         resolution_samples=resolution_samples,
         validator_version="image-resolution-v1" if request.resolution_bounds else "image-v1",
+    )
+
+
+def _validate_qwen_edit(
+    store: Store,
+    load: ImageWorkerLoadRequest,
+    request: ImageAssetValidateRequest,
+    *,
+    reservation_bytes: int,
+) -> ImageAssetValidationResult:
+    """Qualify instruction editing separately, with original-size reference provenance."""
+    process = psutil.Process()
+    baseline = resident_bytes(process.pid)
+    if baseline is None:
+        raise ImageValidationUnavailable("physical footprint is unavailable")
+    peaks = [process.memory_info().rss, baseline]
+
+    def observe(*_: int) -> None:
+        footprint = resident_bytes(process.pid)
+        if footprint is None or footprint > reservation_bytes:
+            raise ImageValidationUnavailable("photo edit exceeded reserved memory")
+        peaks[0] = max(peaks[0], process.memory_info().rss)
+        peaks[1] = max(peaks[1], footprint)
+
+    pipeline = MfluxTxt2ImgPipeline.load(store, load)
+    observe()
+    samples: list[ImageValidationSample] = []
+    thumbnail = None
+    with TemporaryDirectory(prefix="coire-qwen-edit-smoke-") as directory:
+        source = Path(directory) / "source.png"
+        with Image.new("RGB", (800, 600), "white") as image:
+            draw = ImageDraw.Draw(image)
+            draw.ellipse((250, 80, 550, 500), fill="blue", outline="black", width=5)
+            draw.rectangle((100, 500, 700, 530), fill="brown")
+            image.save(source, format="PNG")
+        input_id = uuid.uuid4()
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        for width, height, steps in (
+            (1024, 1024, 40),
+            (1980, 1980, 4),
+            (1980, 1113, 4),
+            (1113, 1980, 4),
+        ):
+            spec = ImageSpec(
+                model_id=request.model_id,
+                mode=ImageMode.EDIT,
+                prompt="Change the blue vase to a red ceramic vase on a wooden table. Keep its shape.",
+                width=width,
+                height=height,
+                steps=steps,
+                guidance=Decimal(4),
+                seed=1,
+                init_image_id=input_id,
+            )
+            resolved = ResolvedImageSpec(
+                spec=spec,
+                seeds=(1,),
+                pipeline_version=RUNTIME_VERSION,
+                environment_fingerprint="0" * 64,
+                model_sha256=request.manifest_sha256,
+                spec_hash=canonical_spec_hash(spec),
+                inputs=(ImageInputDigest(input_id=input_id, sha256=digest, width=800, height=600),),
+            )
+            images = pipeline.generate(resolved, observe, input_paths={input_id: source})
+            observe()
+            try:
+                if (
+                    len(images) != 1
+                    or images[0].mode != "RGB"
+                    or images[0].size != (width, height)
+                    or max(ImageStat.Stat(images[0]).stddev) <= 1
+                ):
+                    raise ImageValidationUnavailable("photo edit returned invalid pixels")
+                if thumbnail is None:
+                    thumbnail = _thumbnail_digest(images[0])
+                samples.append(ImageValidationSample(width=width, height=height, mode="edit"))
+            finally:
+                for image in images:
+                    image.close()
+    profile = ImageCapabilityProfile(
+        modes=(ImageMode.EDIT,),
+        min_width=512,
+        max_width=1980,
+        min_height=512,
+        max_height=1980,
+        max_pixels=1980**2,
+        min_steps=4,
+        max_steps=40,
+        min_guidance=Decimal(4),
+        max_guidance=Decimal(4),
+        max_outputs=1,
+        default_width=1024,
+        default_height=1024,
+        default_steps=40,
+        default_guidance=Decimal(4),
+        max_loras=0,
+    )
+    return ImageAssetValidationResult(
+        validated=True,
+        kind=request.kind,
+        manifest_sha256=request.manifest_sha256,
+        source_revision=request.source_revision,
+        validator_version="qwen-edit-v1",
+        resolution_samples=tuple(samples),
+        peak_rss_bytes=peaks[0],
+        peak_physical_bytes=peaks[1],
+        peak_physical_delta_bytes=max(0, peaks[1] - baseline),
+        thumbnail_sha256=thumbnail,
+        image_capability_profile=profile,
     )
 
 

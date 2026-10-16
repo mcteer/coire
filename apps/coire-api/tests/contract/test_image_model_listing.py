@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -358,3 +359,46 @@ async def test_model_picker_route_is_typed_and_disabled_until_admission(
     assert response.status_code == 200
     assert response.json()["limits"]["output_retention_hours"] == 12
     assert response.json()["limits"]["owner_storage_quota_bytes"] == 1024**3
+
+
+async def test_model_picker_advertises_reference_edit_defaults_without_canny(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Session()
+    row = session.rows[BASE]
+    row.repo_id = "mflux-community/qwen-image-edit-2509-mflux-q8"
+    row.image_capability_profile = ImageCapabilityProfile(
+        modes=(ImageMode.EDIT,),
+        min_width=512,
+        max_width=1980,
+        min_height=512,
+        max_height=1980,
+        max_pixels=1980**2,
+        min_steps=4,
+        max_steps=40,
+        min_guidance=Decimal(4),
+        max_guidance=Decimal(4),
+        max_outputs=1,
+        default_width=1024,
+        default_height=1024,
+        default_steps=40,
+        default_guidance=Decimal(4),
+        max_loras=0,
+    ).model_dump(mode="json")
+
+    async def live(*args: object, **kwargs: object) -> uuid.UUID:
+        return OWNER
+
+    monkeypatch.setattr(catalog, "authorize_live_image_action", live)
+    listing = await catalog.list_eligible_image_models(
+        cast(AsyncSession, session), Principal(kind=PrincipalKind.USER, user_id=OWNER)
+    )
+    item = next(item for item in listing.items if item.id == BASE)
+    assert item.capability.modes == (ImageMode.EDIT,)
+    assert item.capability.default_guidance == 4
+    assert not item.controls and not item.loras and not item.upscalers
+    row.repo_id = "unreviewed/other-model"
+    listing = await catalog.list_eligible_image_models(
+        cast(AsyncSession, session), Principal(kind=PrincipalKind.USER, user_id=OWNER)
+    )
+    assert BASE not in {item.id for item in listing.items}

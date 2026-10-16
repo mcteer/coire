@@ -1162,3 +1162,43 @@ async def test_legacy_cancelled_journal_repairs_cleanup_on_retry(
     assert response.status_code == 200
     assert response.json()["state"] == "cancelled"
     assert response.json()["scratch_cleaned"] is True
+
+
+def test_node_accepts_photo_edit_reference_manifest_at_original_dimensions() -> None:
+    source = uuid.uuid4()
+    base = _request()
+    spec = base.resolved.spec.model_copy(
+        update={"mode": ImageMode.EDIT, "init_image_id": source, "guidance": Decimal(4)}
+    )
+    resolved = base.resolved.model_copy(
+        update={
+            "spec": spec,
+            "spec_hash": canonical_spec_hash(spec),
+            "inputs": (ImageInputDigest(input_id=source, sha256="c" * 64, width=1200, height=800),),
+        }
+    )
+    command = NodeImageStartRequest.model_validate(
+        {
+            **base.model_dump(),
+            "resolved": resolved,
+            "inputs": [
+                NodeImageInputManifest(
+                    input_id=source,
+                    purpose="init",
+                    sha256="c" * 64,
+                    byte_count=100,
+                    width=1200,
+                    height=800,
+                )
+            ],
+        }
+    )
+    load = ImageWorkerLoadRequest(
+        slug="mflux-community--qwen-image-edit-2509-mflux-q8",
+        model_id=MODEL,
+        instance_id=INSTANCE,
+        manifest_sha256="b" * 64,
+        reservation_bytes=1024,
+        runtime_version="mflux-0.20.0",
+    )
+    assert image_dispatch._supported(command, load)

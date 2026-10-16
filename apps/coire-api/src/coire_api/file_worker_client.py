@@ -15,6 +15,8 @@ from coire_core.models.files import (
     FilePurgeResult,
     ImageFileProcessRequest,
     ImageFileProcessResult,
+    ImageInputPurgeRequest,
+    ImageInputPurgeResult,
     is_ulid,
 )
 from coire_core.models.image_worker import ImageRecipeParseRequest, ImageRecipeParseResult
@@ -80,6 +82,28 @@ class FileWorkerClient:
             return FileProcessStatus.model_validate(response.json())
         except (ValueError, ValidationError):
             raise FileWorkerError("invalid worker response") from None
+
+    async def purge_image_input(self, request: ImageInputPurgeRequest) -> ImageInputPurgeResult:
+        token = self.settings.file_worker_service_token.get_secret_value()
+        if not token or self.client is None:
+            raise FileWorkerError("worker unavailable")
+        try:
+            response = await self.client.post(
+                "/v1/image-inputs/purge",
+                json=request.model_dump(mode="json"),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        except httpx.HTTPError:
+            raise FileWorkerError("worker purge unavailable") from None
+        if response.status_code != 200:
+            raise FileWorkerError("worker purge unavailable")
+        try:
+            result = ImageInputPurgeResult.model_validate(response.json())
+        except (ValueError, ValidationError):
+            raise FileWorkerError("invalid worker purge response") from None
+        if result.input_id != request.input_id:
+            raise FileWorkerError("worker input identity mismatch")
+        return result
 
     async def process(self, request: FileProcessRequest) -> FileProcessStatus:
         status = await self._call("POST", "/v1/process", request.model_dump(mode="json"))

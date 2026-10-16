@@ -36,7 +36,9 @@ export function ImageForm({
   limits?: ImageModelList["limits"];
   canGenerateExplicit?: boolean;
 }) {
-  const [modelId, setModelId] = useState(models[0]?.id ?? "");
+  const defaultModel =
+    models.find((item) => item.capability?.modes.includes("txt2img")) ?? models[0];
+  const [modelId, setModelId] = useState(defaultModel?.id ?? "");
   const [presetId, setPresetId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [contentMode, setContentMode] =
@@ -48,7 +50,7 @@ export function ImageForm({
   const [seed, setSeed] = useState<number | null>(null);
   const [count, setCount] = useState<number | null>(null);
   const [mode, setMode] = useState<NonNullable<ImageSubmitRequest["mode"]>>(
-    models[0]?.capability?.modes[0] ?? "txt2img",
+    defaultModel?.capability?.modes[0] ?? "txt2img",
   );
   const [negativePrompt, setNegativePrompt] = useState("");
   const [guidance, setGuidance] = useState<string | null>(null);
@@ -65,8 +67,8 @@ export function ImageForm({
   const [reusedRequest, setReusedRequest] = useState<ImageSubmitRequest | null>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    if (!reusedRequest && !modelId && models[0]) setModelId(models[0].id);
-  }, [modelId, models, reusedRequest]);
+    if (!reusedRequest && !modelId && defaultModel) setModelId(defaultModel.id);
+  }, [modelId, models, reusedRequest, defaultModel]);
   useEffect(() => {
     if (!reuse) return;
     const request = reuse.request;
@@ -189,7 +191,7 @@ export function ImageForm({
   );
   const missingInput =
     preset === null &&
-    (((mode === "img2img" || mode === "fill") && !initImageId) ||
+    (((mode === "img2img" || mode === "fill" || mode === "edit") && !initImageId) ||
       (mode === "img2img" && !strength) ||
       (mode === "fill" && !maskId) ||
       (mode === "control" && (!controlImageId || !controlModelId)));
@@ -260,7 +262,8 @@ export function ImageForm({
         n: count,
         loras,
         upscale,
-        init_image_id: mode === "img2img" || mode === "fill" ? initImageId : null,
+        init_image_id:
+          mode === "img2img" || mode === "fill" || mode === "edit" ? initImageId : null,
         mask_id: mode === "fill" ? maskId : null,
         strength: mode === "img2img" ? strength : null,
         control,
@@ -275,7 +278,7 @@ export function ImageForm({
       content_mode: effectiveContentMode,
       negative_prompt: negativePrompt || null,
       guidance,
-      init_image_id: mode === "img2img" || mode === "fill" ? initImageId : null,
+      init_image_id: mode === "img2img" || mode === "fill" || mode === "edit" ? initImageId : null,
       mask_id: mode === "fill" ? maskId : null,
       strength: mode === "img2img" ? strength : null,
       control,
@@ -316,6 +319,8 @@ export function ImageForm({
                 setMode(selected.capability.modes[0]);
               }
               setGuidance(null);
+              setSteps(null);
+              setNegativePrompt("");
               setLoras([]);
               setUpscale(null);
               setControlModelId(null);
@@ -391,6 +396,7 @@ export function ImageForm({
                     {
                       txt2img: "Create from text",
                       img2img: "Transform an image",
+                      edit: "Edit a photo",
                       fill: "Edit an area",
                       control: "Follow reference outlines",
                     }[available]
@@ -403,6 +409,7 @@ export function ImageForm({
             {
               {
                 txt2img: "Describe the image you want to create.",
+                edit: "Upload a photo and describe what to change. Qwen Image Edit uses the subject’s appearance as a reference. Ask it to retain facial features while changing the setting, clothing or pose, then review the likeness. Reference and output sizes can differ.",
                 img2img:
                   "Upload a source image and describe how it should change. Lower strength preserves more of the original.",
                 fill: "Upload your image and a matching mask. White mask areas are regenerated; black areas are preserved.",
@@ -507,7 +514,7 @@ export function ImageForm({
               </div>
             </details>
           </fieldset>
-          {(mode === "img2img" || mode === "fill") && (
+          {(mode === "img2img" || mode === "fill" || mode === "edit") && (
             <ImageInputField
               label="Source image"
               purpose="init"
@@ -808,7 +815,7 @@ export function ImageForm({
       {missingModel && <p role="alert">The source image model is no longer available.</p>}
       {unsupportedMode && <p role="alert">This model does not support the restored image mode.</p>}
       {unsupportedControlLoras && <p role="alert">Control mode cannot use a LoRA stack.</p>}
-      {(mode === "img2img" || mode === "fill") && !initImageId && (
+      {(mode === "img2img" || mode === "fill" || mode === "edit") && !initImageId && (
         <p role="alert">A source image is required for {mode}.</p>
       )}
       {mode === "fill" && !maskId && <p role="alert">A mask image is required for fill.</p>}

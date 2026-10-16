@@ -27,6 +27,7 @@ class ImageMode(StrEnum):
     IMG2IMG = "img2img"
     FILL = "fill"
     CONTROL = "control"
+    EDIT = "edit"
 
 
 class ImageContentMode(StrEnum):
@@ -234,6 +235,19 @@ class ImageSpec(BaseModel):
                 raise ValueError("img2img requires init_image_id and strength")
             if self.mask_id is not None or self.control is not None:
                 raise ValueError("img2img cannot include mask_id or control")
+        elif self.mode is ImageMode.EDIT:
+            if self.init_image_id is None:
+                raise ValueError("photo editing requires init_image_id")
+            if (
+                self.strength is not None
+                or self.mask_id is not None
+                or self.control is not None
+                or self.loras
+                or self.upscale is not None
+            ):
+                raise ValueError(
+                    "photo editing cannot include strength, mask, control, loras or upscale"
+                )
         elif self.mode is ImageMode.FILL:
             if self.init_image_id is None or self.mask_id is None:
                 raise ValueError("fill requires init_image_id and mask_id")
@@ -272,7 +286,7 @@ class ImageCapabilityProfile(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    modes: tuple[ImageMode, ...] = Field(min_length=1, max_length=4)
+    modes: tuple[ImageMode, ...] = Field(min_length=1, max_length=5)
     min_width: int = Field(ge=64, le=4096)
     max_width: int = Field(ge=64, le=4096)
     min_height: int = Field(ge=64, le=4096)

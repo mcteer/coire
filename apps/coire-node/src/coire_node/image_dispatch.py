@@ -59,8 +59,9 @@ def _supported(request: NodeImageStartRequest, load: ImageWorkerLoadRequest) -> 
         and request.resolved.model_sha256 == load.manifest_sha256
         and request.resolved.pipeline_version == load.runtime_version
         and request.reservation_bytes == load.reservation_bytes
-        and spec.mode in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.FILL, ImageMode.CONTROL}
-        and (spec.mode is ImageMode.FILL or spec.guidance == 0)
+        and spec.mode
+        in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.FILL, ImageMode.CONTROL, ImageMode.EDIT}
+        and (spec.mode in (ImageMode.FILL, ImageMode.EDIT) or spec.guidance == 0)
         and spec.negative_prompt is None
         and not (spec.mode is ImageMode.CONTROL and spec.loras)
         and len(spec.loras) + int(spec.upscale is not None) + int(spec.control is not None)
@@ -75,7 +76,7 @@ def _supported(request: NodeImageStartRequest, load: ImageWorkerLoadRequest) -> 
         and (
             (spec.mode is ImageMode.TXT2IMG and not request.inputs and not request.resolved.inputs)
             or (
-                spec.mode is ImageMode.IMG2IMG
+                spec.mode in (ImageMode.IMG2IMG, ImageMode.EDIT)
                 and spec.init_image_id is not None
                 and len(request.inputs) == 1
                 and request.inputs[0].input_id == spec.init_image_id

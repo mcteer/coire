@@ -109,8 +109,10 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
         except (ImageForbidden, ImageConflict, ImageNotFound, ImageValidationError):
             continue
         fill_only = policy.profile.modes == (ImageMode.FILL,)
+        edit_only = policy.profile.modes == (ImageMode.EDIT,)
+        specialized = fill_only or edit_only
         if (
-            not fill_only
+            not specialized
             and (
                 ImageMode.TXT2IMG not in policy.profile.modes
                 or policy.profile.min_guidance > 0
@@ -119,7 +121,7 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
         ) or policy.profile.required_dependency_ids:
             continue
         eligible_controls: list[ImageAdapterOption] = []
-        for asset in () if fill_only else control_assets:
+        for asset in () if specialized else control_assets:
             if (
                 asset.kind != ModelKind.CONTROL_MODEL
                 or asset.visibility is not Visibility.PUBLISHED
@@ -157,8 +159,8 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
         basic = ImageCapabilityProfile.model_validate(
             {
                 **policy.profile.model_dump(),
-                "modes": (ImageMode.FILL,)
-                if fill_only
+                "modes": policy.profile.modes
+                if specialized
                 else (
                     tuple(
                         mode
@@ -167,9 +169,9 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
                     )
                     + ((ImageMode.CONTROL,) if eligible_controls else ())
                 ),
-                "min_guidance": policy.profile.min_guidance if fill_only else 0,
-                "max_guidance": policy.profile.max_guidance if fill_only else 0,
-                "max_loras": 0 if fill_only else policy.profile.max_loras,
+                "min_guidance": policy.profile.min_guidance if specialized else 0,
+                "max_guidance": policy.profile.max_guidance if specialized else 0,
+                "max_loras": 0 if specialized else policy.profile.max_loras,
                 "supports_negative_prompt": False,
                 "required_dependency_ids": (),
             }
@@ -210,7 +212,7 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
                     ImageAdapterOption(id=adapter.id, display_name=adapter.display_name)
                 )
         eligible_upscalers: list[ImageAdapterOption] = []
-        for asset in upscale_assets:
+        for asset in () if edit_only else upscale_assets:
             if (
                 asset.kind != ModelKind.UPSCALE_MODEL
                 or asset.visibility is not Visibility.PUBLISHED

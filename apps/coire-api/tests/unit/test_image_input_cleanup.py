@@ -369,3 +369,117 @@ async def test_input_purge_sweeps_advance_past_failed_first_batch(
     assert f"image_inputs.{column}, image_inputs.id" in statements[1]
     assert await sweep(settings) == 0
     assert attempted[-25:] == [row[0] for row in rows[:25]]
+
+
+@pytest.mark.asyncio
+async def test_worker_purge_requires_matching_authenticated_receipt_and_fails_closed() -> None:
+    import httpx
+    from pydantic import SecretStr
+
+    from coire_api.file_worker_client import FileWorkerClient, FileWorkerError
+    from coire_core.models.files import ImageInputPurgeRequest
+
+    request = ImageInputPurgeRequest(input_id=uuid.uuid4())
+    settings = Settings(
+        _secrets_dir="/nonexistent", file_worker_service_token=SecretStr("private-test")
+    )  # type: ignore[call-arg]
+
+    def reply(incoming: httpx.Request) -> httpx.Response:
+        assert incoming.headers["Authorization"] == "Bearer private-test"
+        assert incoming.url.path == "/v1/image-inputs/purge"
+        return httpx.Response(200, json={"input_id": str(uuid.uuid4()), "purged": True})
+
+    async with (
+        httpx.AsyncClient(transport=httpx.MockTransport(reply), base_url="http://worker") as http,
+        FileWorkerClient(settings, client=http) as client,
+    ):
+        with pytest.raises(FileWorkerError, match="identity mismatch"):
+            await client.purge_image_input(request)
+
+
+@pytest.mark.asyncio
+async def test_normalized_purge_failure_preserves_quota_and_original(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from coire_api.file_worker_client import FileWorkerClient, FileWorkerError
+    from coire_scheduler import image_inputs as scheduler_inputs
+
+    row = _row()
+    row.purpose = "init"
+    row.state = "deleting"
+    row.deleted_at = datetime.now(UTC) - timedelta(hours=2)
+    (tmp_path / str(row.id)).write_bytes(b"private")
+    owner, global_row = _quotas()
+
+    class FakeSession:
+        async def get(self, *args: object, **kwargs: object) -> ImageInputRow:
+            return row
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[FakeSession]:
+        yield FakeSession()
+
+    async def refused(*args: object) -> None:
+        raise FileWorkerError("worker unavailable")
+
+    monkeypatch.setattr(scheduler_inputs, "session_scope", scope)
+    monkeypatch.setattr(FileWorkerClient, "purge_image_input", refused)
+    settings = Settings(_secrets_dir="/nonexistent", image_input_original_root=str(tmp_path))  # type: ignore[call-arg]
+    with pytest.raises(ImageStorageUnavailable):
+        await scheduler_inputs.purge_normalized_input_copy(settings, row.id)
+    assert (tmp_path / str(row.id)).read_bytes() == b"private"
+    assert row.purged_at is None and owner.held_bytes == global_row.held_bytes == 7
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("state", "purpose", "references", "held", "age_hours", "expected"),
+    [
+        ("ready", "init", 0, 0, 2, False),
+        ("failed", "init", 1, 7, 2, False),
+        ("deleting", "init", 0, 7, 0, False),
+        ("deleting", "init", 0, 7, 2, True),
+        ("deleting", "init", 0, 0, 0, True),
+        ("failed", "init", 0, 7, 2, True),
+        ("failed", "recipe", 0, 7, 2, False),
+        ("deleting", "mask", 0, 0, 2, True),
+    ],
+)
+async def test_scheduler_purges_only_terminal_unreferenced_normalized_inputs(
+    state: str,
+    purpose: str,
+    references: int,
+    held: int,
+    age_hours: int,
+    expected: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.file_worker_client import FileWorkerClient
+    from coire_core.models.files import ImageInputPurgeRequest, ImageInputPurgeResult
+    from coire_scheduler import image_inputs as scheduler_inputs
+
+    row = _row()
+    row.state, row.purpose, row.active_references, row.held_bytes = state, purpose, references, held
+    row.deleted_at = datetime.now(UTC) - timedelta(hours=age_hours)
+
+    class FakeSession:
+        async def get(self, *args: object, **kwargs: object) -> ImageInputRow:
+            assert kwargs.get("with_for_update")
+            return row
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[FakeSession]:
+        yield FakeSession()
+
+    calls = []
+
+    async def purge(client: object, request: ImageInputPurgeRequest) -> ImageInputPurgeResult:
+        calls.append(request.input_id)
+        return ImageInputPurgeResult(input_id=request.input_id)
+
+    monkeypatch.setattr(scheduler_inputs, "session_scope", scope)
+    monkeypatch.setattr(FileWorkerClient, "purge_image_input", purge)
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    assert await scheduler_inputs.purge_normalized_input_copy(settings, row.id) is expected
+    assert calls == ([row.id] if expected else [])
+    assert row.held_bytes == held and row.purged_at is None

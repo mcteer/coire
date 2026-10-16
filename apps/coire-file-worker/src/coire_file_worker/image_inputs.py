@@ -28,6 +28,29 @@ _READ_BLOCK = 64 * 1024
 _ALLOWED_FORMATS = frozenset({"PNG", "JPEG", "WEBP"})
 
 
+def purge_normalized_input(root: Path, input_id: str) -> None:
+    """No-follow, idempotent unlink; caller supplies a schema-validated UUID."""
+    fd = -1
+    try:
+        try:
+            fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            return
+        try:
+            info = os.stat(input_id, dir_fd=fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ImageInputProcessError("image_input_unavailable")
+        os.unlink(input_id, dir_fd=fd)
+        os.fsync(fd)
+    except OSError as exc:
+        raise ImageInputProcessError("image_input_unavailable") from exc
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
 class ImageInputProcessError(RuntimeError):
     """Content-free refusal code for a private image input."""
 

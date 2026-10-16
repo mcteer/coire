@@ -9167,7 +9167,7 @@ export interface components {
          * ImageMode
          * @enum {string}
          */
-        ImageMode: "txt2img" | "img2img" | "fill" | "control";
+        ImageMode: "txt2img" | "img2img" | "fill" | "control" | "edit";
         /** ImageModelList */
         ImageModelList: {
             /** Items */

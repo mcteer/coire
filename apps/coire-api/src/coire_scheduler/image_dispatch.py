@@ -33,7 +33,7 @@ from coire_api.images.quota import _QUOTA_LOCK
 from coire_api.images.safety import ensure_image_content_allowed
 from coire_api.placement.service import lock_nodes_for_admission
 from coire_core.errors import ImageConflict, ImageContentBlocked
-from coire_core.image_assets import FLUX_FILL_REPO_ID
+from coire_core.image_assets import FLUX_FILL_REPO_ID, QWEN_EDIT_REPO_IDS
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.image_worker import (
     ImageWorkerLoadRequest,
@@ -445,6 +445,11 @@ def _ready_base(row: ModelRow | None) -> ImageCapabilityProfile | None:
         not fill_repo and ImageMode.FILL in profile.modes
     ):
         return None
+    edit_repo = getattr(row, "repo_id", None) in QWEN_EDIT_REPO_IDS
+    if (edit_repo and profile.modes != (ImageMode.EDIT,)) or (
+        not edit_repo and ImageMode.EDIT in profile.modes
+    ):
+        return None
     return profile
 
 
@@ -541,6 +546,7 @@ async def _bound_inputs(
             or row.normalized_height < 1
             or (
                 purpose != "control"
+                and spec.mode is not ImageMode.EDIT
                 and (row.normalized_width != spec.width or row.normalized_height != spec.height)
             )
         ):
@@ -658,8 +664,15 @@ async def prepare_image_dispatch(
         raise ImageConflict("image queue dispatch has bound runtime")
     spec = snapshot.effective_spec
     if (
-        spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.FILL, ImageMode.CONTROL}
-        or (spec.mode is not ImageMode.FILL and spec.guidance != 0)
+        spec.mode
+        not in {
+            ImageMode.TXT2IMG,
+            ImageMode.IMG2IMG,
+            ImageMode.FILL,
+            ImageMode.CONTROL,
+            ImageMode.EDIT,
+        }
+        or (spec.mode not in (ImageMode.FILL, ImageMode.EDIT) and spec.guidance != 0)
         or spec.negative_prompt is not None
         or spec.seed is None
         or spec.variant_id is not None

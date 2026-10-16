@@ -307,6 +307,8 @@ def test_admission_commits_once_and_replays_same_intent(monkeypatch: pytest.Monk
     effective = cast(dict[str, object], job.resolved_spec["effective_spec"])
     assert effective["seed"] == 7
     assert job.resolved_spec["resolved"] is None
+    assert job.queued_at is not None
+    assert (job.deadline_at - job.queued_at).total_seconds() == 1800
     assert event.sequence == 1 and event.event_type == "queued"
     assert "private portrait" not in str(event.payload)
     with pytest.raises(ImageConflict):

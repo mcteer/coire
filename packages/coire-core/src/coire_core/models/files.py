@@ -246,6 +246,18 @@ def is_ulid(value: str) -> bool:
     return re.fullmatch(ULID_PATTERN, value) is not None
 
 
+class ImageInputPurgeRequest(BaseModel):
+    """Delete only the generated normalized filename within the worker-owned root."""
+
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal[1] = 1
+    input_id: uuid.UUID
+
+
+class ImageInputPurgeResult(ImageInputPurgeRequest):
+    purged: Literal[True] = True
+
+
 class ImageFileProcessRequest(BaseModel):
     """Separate isolated image operation; chat file commands cannot select it."""
 

@@ -16,6 +16,7 @@ from coire_core.models.images import (
     RECIPE_INPUT_MAX_BYTES,
     ImageCapabilityProfile,
     ImageClassificationResult,
+    ImageMode,
     ImageRecipe,
     ImageResolutionBounds,
     ResolvedImageSpec,
@@ -125,7 +126,7 @@ class ImageValidationSample(BaseModel):
 
     width: int = Field(ge=64, le=4096)
     height: int = Field(ge=64, le=4096)
-    mode: Literal["txt2img", "img2img"]
+    mode: Literal["txt2img", "img2img", "edit"]
 
 
 class ImageAssetValidationResult(BaseModel):
@@ -480,7 +481,9 @@ def _check_inputs(
         raise ValueError("inputs differ from requested image bindings")
     for item in manifests:
         if item.purpose != purposes[item.input_id] or (
-            item.purpose != "control" and (item.width != spec.width or item.height != spec.height)
+            item.purpose != "control"
+            and spec.mode is not ImageMode.EDIT
+            and (item.width != spec.width or item.height != spec.height)
         ):
             raise ValueError("input purpose or dimensions differ from image request")
 

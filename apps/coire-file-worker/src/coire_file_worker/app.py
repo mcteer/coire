@@ -24,6 +24,8 @@ from coire_core.models.files import (
     FileWorkerHealth,
     ImageFileProcessRequest,
     ImageFileProcessResult,
+    ImageInputPurgeRequest,
+    ImageInputPurgeResult,
     is_ulid,
 )
 from coire_core.models.image_worker import ImageRecipeParseRequest, ImageRecipeParseResult
@@ -34,6 +36,7 @@ from coire_file_worker.image_inputs import (
     ImageRecipeParseError,
     parse_recipe_png,
     process_image_input,
+    purge_normalized_input,
 )
 from coire_file_worker.processor import FileProcessingError, process_file
 from coire_file_worker.security import require_service_token
@@ -380,6 +383,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: ImageFileProcessRequest,
     ) -> ImageFileProcessResult:
         return await worker.process_image_input(request)
+
+    @app.post(
+        "/v1/image-inputs/purge",
+        response_model=ImageInputPurgeResult,
+        dependencies=[Depends(authenticated)],
+    )
+    async def purge_image_input(request: ImageInputPurgeRequest) -> ImageInputPurgeResult:
+        async with worker.lock:
+            if worker.active_job is not None or worker.recipe_active:
+                raise HTTPException(status_code=429, detail="worker busy")
+            with tracer.start_as_current_span("coire.file_worker.image_input_purge") as span:
+                span.set_attribute("input_id", str(request.input_id))
+                task = asyncio.create_task(
+                    asyncio.to_thread(
+                        purge_normalized_input,
+                        Path(worker.settings.file_worker_image_output_root),
+                        str(request.input_id),
+                    )
+                )
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    with suppress(Exception):
+                        await task
+                    raise
+                except ImageInputProcessError:
+                    image_inputs_total.add(1, {"outcome": "purge_failed"})
+                    logger.warning("image input purge failed input_id=%s", request.input_id)
+                    raise HTTPException(503, "image input purge unavailable") from None
+                image_inputs_total.add(1, {"outcome": "purged"})
+                logger.info("image input purged input_id=%s", request.input_id)
+                return ImageInputPurgeResult(input_id=request.input_id)
 
     @app.get(
         "/v1/jobs/{job_id}", response_model=FileProcessStatus, dependencies=[Depends(authenticated)]

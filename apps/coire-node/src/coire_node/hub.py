@@ -32,6 +32,7 @@ from coire_core.image_assets import (
     FLUX_FILL_REPO_ID,
     SEEDVR2_3B_REPO_ID,
     has_control_union_layout,
+    has_qwen_edit_layout,
     has_seedvr2_3b_layout,
     include_image_asset_path,
 )
@@ -326,6 +327,7 @@ def image_asset_files(repo: RepoInspection, kind: ModelKind) -> tuple[str, ...]:
         kind in {ModelKind.IMAGE_MODEL, ModelKind.CONTROL_MODEL, ModelKind.UPSCALE_MODEL}
         and "config.json" not in selected
         and not (kind is ModelKind.IMAGE_MODEL and "model_index.json" in selected)
+        and not (kind is ModelKind.IMAGE_MODEL and has_qwen_edit_layout(repo.repo_id, selected))
         and not (kind is ModelKind.UPSCALE_MODEL and has_seedvr2_3b_layout(repo.repo_id, selected))
         and not (
             kind is ModelKind.CONTROL_MODEL and has_control_union_layout(repo.repo_id, selected)
