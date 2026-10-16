@@ -17,6 +17,7 @@ from coire_core.models.images import (
     ImageCapabilityProfile,
     ImageClassificationResult,
     ImageRecipe,
+    ImageResolutionBounds,
     ResolvedImageSpec,
 )
 from coire_core.models.registry import ModelKind
@@ -104,6 +105,7 @@ class ImageAssetValidateRequest(BaseModel):
     manifest_sha256: str = Field(pattern=SHA256_PATTERN)
     reservation_id: uuid.UUID
     compatible_base: ImageValidationBase | None = None
+    resolution_bounds: ImageResolutionBounds | None = None
 
     @model_validator(mode="after")
     def image_only(self) -> ImageAssetValidateRequest:
@@ -113,7 +115,17 @@ class ImageAssetValidateRequest(BaseModel):
             self.compatible_base is not None
         ):
             raise ValueError("LoRA and control validation require an exact compatible base")
+        if self.resolution_bounds is not None and self.kind is not ModelKind.IMAGE_MODEL:
+            raise ValueError("resolution qualification requires a base image model")
         return self
+
+
+class ImageValidationSample(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    width: int = Field(ge=64, le=4096)
+    height: int = Field(ge=64, le=4096)
+    mode: Literal["txt2img", "img2img"]
 
 
 class ImageAssetValidationResult(BaseModel):
@@ -126,6 +138,7 @@ class ImageAssetValidationResult(BaseModel):
     manifest_sha256: str = Field(pattern=SHA256_PATTERN)
     source_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
     validator_version: str = "image-v1"
+    resolution_samples: tuple[ImageValidationSample, ...] = ()
     peak_rss_bytes: int = Field(ge=0)
     peak_physical_bytes: int | None = Field(default=None, ge=0)
     peak_physical_delta_bytes: int | None = Field(default=None, ge=0)

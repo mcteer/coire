@@ -28,6 +28,7 @@ from coire_core.image_assets import (
 from coire_core.models.image_worker import (
     ImageAssetValidateRequest,
     ImageAssetValidationResult,
+    ImageValidationSample,
     ImageWorkerLoadRequest,
 )
 from coire_core.models.images import (
@@ -114,6 +115,50 @@ def validate_image_asset(
 
 
 def _validate_image_asset(
+    store: Store, request: ImageAssetValidateRequest, *, reservation_bytes: int
+) -> ImageAssetValidationResult:
+    if request.resolution_bounds is None:
+        return _validate_image_asset_inner(store, request, reservation_bytes=reservation_bytes)
+    process = psutil.Process()
+    baseline = resident_bytes(process.pid)
+    if baseline is None:
+        raise ImageValidationUnavailable("physical footprint is unavailable")
+    peaks = [process.memory_info().rss, baseline]
+    unavailable = threading.Event()
+    stop = threading.Event()
+
+    def sample() -> None:
+        while not stop.wait(0.005):
+            physical = resident_bytes(process.pid)
+            if physical is None:
+                unavailable.set()
+                return
+            peaks[0] = max(peaks[0], process.memory_info().rss)
+            peaks[1] = max(peaks[1], physical)
+
+    sampler = threading.Thread(target=sample, daemon=True)
+    sampler.start()
+    try:
+        result = _validate_image_asset_inner(store, request, reservation_bytes=reservation_bytes)
+    finally:
+        stop.set()
+        sampler.join(timeout=2)
+    if unavailable.is_set() or sampler.is_alive():
+        raise ImageValidationUnavailable("physical footprint sampling is unavailable")
+    if max(peaks) > reservation_bytes:
+        raise ImageValidationUnavailable("image qualification exceeded reserved memory")
+    return result.model_copy(
+        update={
+            "peak_rss_bytes": max(result.peak_rss_bytes, peaks[0]),
+            "peak_physical_bytes": max(result.peak_physical_bytes or 0, peaks[1]),
+            "peak_physical_delta_bytes": max(
+                result.peak_physical_delta_bytes or 0, peaks[1] - baseline
+            ),
+        }
+    )
+
+
+def _validate_image_asset_inner(
     store: Store, request: ImageAssetValidateRequest, *, reservation_bytes: int
 ) -> ImageAssetValidationResult:
     if reservation_bytes <= 0:
@@ -239,23 +284,36 @@ def _validate_image_asset(
         finally:
             for image in transformed:
                 image.close()
+    resolution_samples = (
+        _qualify_resolution_samples(pipeline, request, observe_footprint)
+        if request.resolution_bounds is not None
+        else ()
+    )
     measured_physical = max(0, peak_physical - baseline_physical)
     if max(peak_rss, peak_physical) > reservation_bytes:
         raise ImageValidationUnavailable("image smoke exceeded reserved memory")
     profile = ImageCapabilityProfile(
         modes=(ImageMode.TXT2IMG, ImageMode.IMG2IMG),
         min_width=_SMOKE_SIZE,
-        max_width=_SMOKE_SIZE,
+        max_width=request.resolution_bounds.max_width if request.resolution_bounds else _SMOKE_SIZE,
         min_height=_SMOKE_SIZE,
-        max_height=_SMOKE_SIZE,
-        max_pixels=_SMOKE_SIZE * _SMOKE_SIZE,
+        max_height=request.resolution_bounds.max_height
+        if request.resolution_bounds
+        else _SMOKE_SIZE,
+        max_pixels=(request.resolution_bounds.max_width * request.resolution_bounds.max_height)
+        if request.resolution_bounds
+        else _SMOKE_SIZE * _SMOKE_SIZE,
         min_steps=_SMOKE_STEPS,
         max_steps=_SMOKE_STEPS,
         min_guidance=Decimal(0),
         max_guidance=Decimal(0),
         max_outputs=1,
-        default_width=_SMOKE_SIZE,
-        default_height=_SMOKE_SIZE,
+        default_width=min(1024, request.resolution_bounds.max_width)
+        if request.resolution_bounds
+        else _SMOKE_SIZE,
+        default_height=min(1024, request.resolution_bounds.max_height)
+        if request.resolution_bounds
+        else _SMOKE_SIZE,
         default_steps=_SMOKE_STEPS,
         default_guidance=Decimal(0),
         max_loras=4,
@@ -270,7 +328,90 @@ def _validate_image_asset(
         peak_physical_delta_bytes=measured_physical,
         thumbnail_sha256=thumbnail_sha256,
         image_capability_profile=profile,
+        resolution_samples=resolution_samples,
+        validator_version="image-resolution-v1" if request.resolution_bounds else "image-v1",
     )
+
+
+def _qualify_resolution_samples(
+    pipeline: MfluxTxt2ImgPipeline,
+    request: ImageAssetValidateRequest,
+    observe: Callable[..., None],
+) -> tuple[ImageValidationSample, ...]:
+    bounds = request.resolution_bounds
+    assert bounds is not None
+    sizes = tuple(
+        dict.fromkeys(
+            (
+                (bounds.max_width, bounds.max_height),
+                (bounds.max_width, max(512, bounds.max_height * 9 // 16)),
+                (max(512, bounds.max_width * 9 // 16), bounds.max_height),
+            )
+        )
+    )
+    samples: list[ImageValidationSample] = []
+    base = _smoke_spec(request.model_id, request.manifest_sha256)
+
+    def run(width: int, height: int, *, source: Path | None = None) -> None:
+        input_id = uuid.uuid4()
+        spec = base.spec.model_copy(
+            update={
+                "width": width,
+                "height": height,
+                "prompt": "a ceramic teapot on a wooden table, soft window light, detailed still life photograph",
+                "mode": ImageMode.TXT2IMG if source is None else ImageMode.IMG2IMG,
+                "init_image_id": None if source is None else input_id,
+                "strength": None if source is None else Decimal("0.375125"),
+            }
+        )
+        inputs = (
+            ()
+            if source is None
+            else (
+                ImageInputDigest(
+                    input_id=input_id,
+                    sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                    width=width,
+                    height=height,
+                ),
+            )
+        )
+        resolved = base.model_copy(
+            update={"spec": spec, "spec_hash": canonical_spec_hash(spec), "inputs": inputs}
+        )
+        images = pipeline.generate(
+            resolved, observe, input_paths=None if source is None else {input_id: source}
+        )
+        observe()
+        try:
+            if (
+                len(images) != 1
+                or images[0].mode != "RGB"
+                or images[0].size != (width, height)
+                or images[0].getbbox() is None
+                or max(ImageStat.Stat(images[0]).stddev) <= 1
+            ):
+                raise ImageValidationUnavailable("resolution qualification returned invalid pixels")
+            samples.append(
+                ImageValidationSample(
+                    width=width, height=height, mode="txt2img" if source is None else "img2img"
+                )
+            )
+        finally:
+            for image in images:
+                image.close()
+
+    for width, height in sizes:
+        run(width, height)
+    with TemporaryDirectory(prefix="coire-resolution-smoke-") as directory:
+        source = Path(directory) / "source.png"
+        with Image.new("RGB", (bounds.max_width, bounds.max_height), "navy") as image:
+            ImageDraw.Draw(image).rectangle(
+                (0, 0, bounds.max_width // 2, bounds.max_height), fill="white"
+            )
+            image.save(source)
+        run(bounds.max_width, bounds.max_height, source=source)
+    return tuple(samples)
 
 
 def _validate_fill_with_peak(

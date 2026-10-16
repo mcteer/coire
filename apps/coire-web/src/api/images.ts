@@ -219,3 +219,27 @@ export function uploadImageRecipe(file: File): Promise<ImageInput> {
 export function getImageInput(inputId: string): Promise<ImageInput> {
   return api<ImageInput>(`/api/v1/image-inputs/${encodeURIComponent(inputId)}`);
 }
+
+export type ImageResolutionQualificationRequest =
+  components["schemas"]["ImageResolutionQualificationRequest"];
+export type ImageResolutionQualificationReceipt =
+  components["schemas"]["ImageResolutionQualificationReceipt"];
+export function qualifyImageResolution(
+  modelId: string,
+  body: ImageResolutionQualificationRequest = {
+    reservation_bytes: 128 * 1024 ** 3,
+    bounds: { max_width: 1980, max_height: 1980 },
+  },
+): Promise<ImageResolutionQualificationReceipt> {
+  return api(`/api/v1/admin/models/${encodeURIComponent(modelId)}/image-resolution-qualification`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteImageHistory(
+  jobIds: string[],
+): Promise<components["schemas"]["ImageHistoryDeletionReceipt"]> {
+  const body: components["schemas"]["ImageHistoryDeletionRequest"] = { job_ids: jobIds };
+  return api("/api/v1/images/history/deletions", { method: "POST", body: JSON.stringify(body) });
+}

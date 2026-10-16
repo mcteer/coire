@@ -1,6 +1,18 @@
 groups:
   - name: coire-image
     rules:
+      - alert: CoireImageResolutionQualificationFailed
+        expr: sum(increase(coire_image_resolution_qualification_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Expanded image qualification failed; previous model limits remain usable
+      - alert: CoireImageChildSafetyRefusals
+        expr: sum(increase(coire_image_content_policy_refusals_total[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Universal image content policy refused a request or legacy read
       - alert: CoireImageFailures
         expr: sum(increase(coire_image_requests_total{outcome="failed"}[5m])) > 0
         for: 0m

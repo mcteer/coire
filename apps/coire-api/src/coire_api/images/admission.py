@@ -21,6 +21,7 @@ from coire_api.images.job_capacity import reserve_image_job_capacity
 from coire_api.images.presets import load_resolved_image_preset
 from coire_api.images.quota import _QUOTA_LOCK
 from coire_api.images.resolution import resolve_basic_image_spec
+from coire_api.images.safety import ensure_image_content_allowed
 from coire_api.images.telemetry import ImageOperation, image_span
 from coire_core.errors import ImageConflict, ImageForbidden, ImageValidationError
 from coire_core.image_assets import FLUX_FILL_REPO_ID
@@ -38,6 +39,7 @@ from coire_core.models.images import (
     ImageSubmitRequest,
     canonical_client_intent_hash,
     image_input_bindings,
+    qualified_control_capability,
 )
 from coire_core.models.registry import (
     AUXILIARY_IMAGE_KINDS,
@@ -119,6 +121,8 @@ async def _load_policy(
             and ImageMode.CONTROL not in profile.modes
         ):
             profile = profile.model_copy(update={"modes": (*profile.modes, ImageMode.CONTROL)})
+        if preset.request.mode is ImageMode.CONTROL:
+            profile = qualified_control_capability(profile)
         return ImageAdmissionPolicy(
             request=preset.request,
             profile=profile,
@@ -169,6 +173,8 @@ async def _load_policy(
         and ImageMode.CONTROL not in profile.modes
     ):
         profile = profile.model_copy(update={"modes": (*profile.modes, ImageMode.CONTROL)})
+    if request.mode is ImageMode.CONTROL:
+        profile = qualified_control_capability(profile)
     effective_request = request
     if "explicit" in required:
         effective_request = request.model_copy(update={"content_mode": ImageContentMode.EXPLICIT})
@@ -258,6 +264,9 @@ async def admit_image_job(
     if _KEY.fullmatch(idempotency_key) is None:
         raise ImageValidationError("invalid image idempotency key")
     owner_id = preflight_image_action(principal, method="GET", origin=None, browser_origin="")
+    ensure_image_content_allowed(
+        request.prompt, explicit=request.content_mode is ImageContentMode.EXPLICIT
+    )
     intent_sha256 = canonical_client_intent_hash(request)
     with image_span(ImageOperation.SUBMIT):
         await session.execute(_QUOTA_LOCK)
@@ -277,6 +286,10 @@ async def admit_image_job(
                 state = ImageJobState(existing.state)
             except (ValidationError, ValueError, TypeError) as exc:
                 raise ImageConflict("image job snapshot unavailable") from exc
+            ensure_image_content_allowed(
+                snapshot.effective_spec.prompt,
+                explicit=snapshot.effective_spec.content_mode is ImageContentMode.EXPLICIT,
+            )
             replay_required = _replay_entitlements(existing)
             await authorize_live_image_action(
                 session,
@@ -294,6 +307,7 @@ async def admit_image_job(
             policy.request.content_mode is ImageContentMode.EXPLICIT
             or "explicit" in policy.required_entitlements
         )
+        ensure_image_content_allowed(policy.request.prompt, explicit=explicit)
         await authorize_live_image_action(
             session,
             principal,

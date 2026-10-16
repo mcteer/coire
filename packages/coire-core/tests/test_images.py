@@ -74,7 +74,7 @@ def test_submit_is_root_level_and_forbids_untrusted_fields() -> None:
         ({"mode": "txt2img", "init_image_id": INPUT}, "init_image_id"),
         ({"mode": "img2img", "init_image_id": INPUT, "strength": 0}, "strength"),
         ({"width": 4097}, "width"),
-        ({"height": 513}, "height"),
+        ({"height": 63}, "height"),
         ({"n": 5}, "n"),
         ({"seed": 2**32}, "seed"),
         ({"guidance": "NaN"}, "guidance"),
@@ -393,3 +393,14 @@ def test_compatible_format_and_preset_are_strict() -> None:
             name="bad",
             defaults=ImageSubmitRequest(preset_id=MODEL, prompt="fox"),
         )
+
+
+def test_exact_non_aligned_output_size_and_padded_canvas_bound() -> None:
+    from coire_core.models.images import image_canvas_dimensions
+
+    image = spec(width=1980, height=1107)
+    assert (image.width, image.height) == (1980, 1107)
+    assert image_canvas_dimensions(image.width, image.height) == (1984, 1120)
+    assert OpenAIImageGenerationRequest(model=MODEL, prompt="teapot", size="1980x1980")
+    with pytest.raises(ValidationError, match="padded"):
+        spec(width=4001, height=3999)

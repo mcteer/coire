@@ -24,6 +24,7 @@ from coire_core.models.images import (
     ImageModelOption,
     ImageSubmitRequest,
     ImageUpscale,
+    qualified_control_capability,
 )
 from coire_core.models.registry import EngineBackend, ModelKind, ModelSource, ModelState, Visibility
 
@@ -246,6 +247,9 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
                 slug=row.slug,
                 display_name=row.display_name,
                 capability=basic,
+                mode_capabilities={ImageMode.CONTROL: qualified_control_capability(basic)}
+                if eligible_controls
+                else {},
                 required_dependency_count=len(policy.profile.required_dependency_ids),
                 loras=tuple(eligible_loras),
                 upscalers=tuple(eligible_upscalers),

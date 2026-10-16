@@ -40,6 +40,7 @@ from coire_api.db import (
 )
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.providers import credential_present
+from coire_api.images.resolution_qualification import submit_qualification
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.placement.legacy import ensure_legacy_model_hold
 from coire_api.placement.service import node_admission_lock
@@ -47,9 +48,14 @@ from coire_api.preconditions import require_current
 from coire_api.registry import image_acquisition, service
 from coire_api.registry.placement import NoCandidate, choose_load_node
 from coire_api.registry.visual_memory import reservation_bytes
+from coire_api.routes.admin_images import HumanImageAdmin
 from coire_core.errors import ChatModelUnavailable
 from coire_core.models.audit import AuditAction
 from coire_core.models.engine import EngineProcess, EngineRenderingIdentity, EngineState
+from coire_core.models.images import (
+    ImageResolutionQualificationReceipt,
+    ImageResolutionQualificationRequest,
+)
 from coire_core.models.jobs import DownloadJob
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.registry import (
@@ -308,6 +314,29 @@ async def add_image_asset(
     if reconciler is not None:
         reconciler._wake.set()
     return await _detail(session, model)
+
+
+@router.post(
+    "/models/{model_id}/image-resolution-qualification",
+    response_model=ImageResolutionQualificationReceipt,
+    status_code=202,
+)
+async def qualify_image_resolution(
+    model_id: uuid.UUID,
+    request: ImageResolutionQualificationRequest,
+    http_request: Request,
+    principal: HumanImageAdmin,
+    session: SessionDep,
+) -> ImageResolutionQualificationReceipt:
+    views = await service.node_views(session, _statuses(http_request))
+    receipt = await submit_qualification(
+        session, model_id, request, principal=principal, views=views
+    )
+    await session.commit()
+    reconciler = getattr(http_request.app.state, "reconciler", None)
+    if reconciler is not None:
+        reconciler._wake.set()
+    return receipt
 
 
 @router.get("/models")

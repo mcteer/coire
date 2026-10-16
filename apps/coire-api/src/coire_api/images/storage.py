@@ -26,6 +26,7 @@ from coire_api.images.input_references import release_image_input_references
 from coire_api.images.jobs import _policy
 from coire_api.images.maintenance import purge_terminal_transfer_staging
 from coire_api.images.quota import _QUOTA_LOCK, release_storage_hold, settle_storage_hold
+from coire_api.images.safety import ensure_image_content_allowed
 from coire_api.images.transfer import _verify_staged
 from coire_core.errors import ImageConflict, ImageForbidden, ImageStorageUnavailable
 from coire_core.models.audit import AuditOutcome
@@ -123,6 +124,7 @@ async def publish_image_batch(session: AsyncSession, job_id: str, settings: Sett
     ):
         raise ImageConflict("image publication is not ready")
     snapshot, required, explicit = _policy(row)
+    ensure_image_content_allowed(snapshot.effective_spec.prompt, explicit=explicit)
     resolved = snapshot.resolved
     if resolved is None:
         raise ImageConflict("image runtime is not bound")

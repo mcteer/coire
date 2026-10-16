@@ -616,6 +616,7 @@ def test_acquisition_worker_persists_typed_validation_evidence(
                     "manifest_sha256": digest,
                     "reservation_id": str(uuid.uuid4()),
                     "reservation_bytes": 10**9,
+                    "resolution_bounds": {"max_width": 1980, "max_height": 1980},
                 },
             }
         )
@@ -645,10 +646,52 @@ def test_acquisition_worker_persists_typed_validation_evidence(
             }
         ),
     )
-    monkeypatch.setattr(
-        "coire_node.image_validation.validate_image_asset", lambda *args, **kwargs: evidence
-    )
+
+    def validate_bound_request(
+        store: object, request: ImageAssetValidateRequest, **kwargs: object
+    ) -> ImageAssetValidationResult:
+        assert request.resolution_bounds is not None
+        assert request.resolution_bounds.max_width == 1980
+        return evidence
+
+    monkeypatch.setattr("coire_node.image_validation.validate_image_asset", validate_bound_request)
     job = JobFile(path)
     assert run_image_validate(job) == EXIT_OK
     assert job.status.stage is JobStage.DONE
     assert ImageAssetValidationResult.model_validate(job.status.result) == evidence
+
+
+def test_resolution_qualification_measures_both_orientations_and_img2img(tmp_path: Path) -> None:
+    from coire_core.models.images import ImageResolutionBounds
+
+    request = _request("a" * 64).model_copy(update={"resolution_bounds": ImageResolutionBounds()})
+    calls: list[tuple[int, int, str]] = []
+
+    class Native:
+        def generate(
+            self,
+            resolved: ResolvedImageSpec,
+            observe: Callable[..., None],
+            *,
+            input_paths: dict[uuid.UUID, Path] | None = None,
+        ) -> tuple[Image.Image, ...]:
+            spec = resolved.spec
+            calls.append((spec.width, spec.height, spec.mode.value))
+            if spec.mode is ImageMode.IMG2IMG:
+                assert input_paths
+                with Image.open(next(iter(input_paths.values()))) as source:
+                    assert source.size == (1980, 1980)
+            output = Image.new("RGB", (spec.width, spec.height), "navy")
+            ImageDraw.Draw(output).rectangle((0, 0, spec.width // 2, spec.height), fill="white")
+            return (output,)
+
+    result = image_validation._qualify_resolution_samples(
+        cast(Any, Native()), request, lambda *_: None
+    )
+    assert {(x.width, x.height, x.mode) for x in result} == {
+        (1980, 1980, "txt2img"),
+        (1980, 1113, "txt2img"),
+        (1113, 1980, "txt2img"),
+        (1980, 1980, "img2img"),
+    }
+    assert len(calls) == 4

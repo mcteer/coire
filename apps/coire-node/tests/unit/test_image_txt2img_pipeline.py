@@ -219,3 +219,17 @@ def test_native_loader_receives_only_verified_local_path(
     monkeypatch.setattr(pipeline, "_load_native", fake_load)
     pipeline.MfluxTxt2ImgPipeline.load(Store(tmp_path), request)
     assert seen == [tmp_path]
+
+
+def test_non_aligned_request_uses_native_canvas_and_keeps_exact_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    request = _request()
+    engine, model = _loaded(monkeypatch, tmp_path, request)
+    result = engine.generate(_resolved(request, width=1980, height=1107), lambda *_: None)
+    try:
+        assert {(image.width, image.height) for image in result} == {(1980, 1107)}
+        assert all(call["width"] == 1984 and call["height"] == 1120 for call in model.calls)
+    finally:
+        for image in result:
+            image.close()

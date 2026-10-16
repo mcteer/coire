@@ -22,6 +22,7 @@ from coire_api.images.authorization import (
     require_owned_image_job,
 )
 from coire_api.images.outputs import output_projection
+from coire_api.images.safety import ensure_image_content_allowed
 from coire_core.errors import ImageConflict, ImageForbidden, ImageNotFound, ImageValidationError
 from coire_core.models.files import ULID_PATTERN
 from coire_core.models.images import (
@@ -95,6 +96,7 @@ def _policy(row: ImageJobRow) -> tuple[ImageJobSettingsSnapshot, frozenset[str],
 async def get_owned_image_job(session: AsyncSession, principal: Principal, job_id: str) -> ImageJob:
     row = await require_owned_image_job(session, job_id, principal)
     snapshot, required, explicit = _policy(row)
+    ensure_image_content_allowed(snapshot.effective_spec.prompt, explicit=explicit)
     await authorize_live_image_action(
         session, principal, explicit=explicit, required_entitlements=required
     )
@@ -158,7 +160,9 @@ async def list_owned_image_jobs(
     if not 1 <= limit <= 100:
         raise ImageValidationError("invalid image page size")
     owner_id = await authorize_live_image_action(session, principal)
-    query = select(ImageJobRow).where(ImageJobRow.owner_user_id == owner_id)
+    query = select(ImageJobRow).where(
+        ImageJobRow.owner_user_id == owner_id, ImageJobRow.history_deleted_at.is_(None)
+    )
     if state is not None:
         query = query.where(ImageJobRow.state == state.value)
     if cursor is not None:

@@ -1,4 +1,8 @@
 export type IconName =
+  | "trash"
+  | "download"
+  | "reuse"
+  | "regenerate"
   | "paperclip"
   | "stop"
   | "chat"
@@ -24,6 +28,10 @@ export type IconName =
   | "palette"
   | "chevron";
 const paths: Record<IconName, string> = {
+  trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7",
+  download: "M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5",
+  reuse: "M9 9h12v12H9zM15 9V3H3v12h6",
+  regenerate: "M20 8a8 8 0 1 0 0 8M20 3v5h-5",
   paperclip: "m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l9-9M6 14l8-8",
   stop: "M5 5h14v14H5z",
   chat: "M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z",

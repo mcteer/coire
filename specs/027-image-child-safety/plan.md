@@ -1,0 +1,6 @@
+# Plan
+
+Implement shared pure text policy and typed ImageContentBlocked error in coire-core. Normalize Unicode, format characters, separators and common age forms; reject when youth/under-18 evidence and explicit/nude/sexual evidence intersect. Keep a bounded, versioned vocabulary with regression tests; never advertise it as comprehensive moderation.
+Call policy before any admission DB mutation, again after preset resolution, on saved replay, before worker encode/generate, before publication and before legacy output reads. Existing scope/origin/live entitlement checks remain. Standard accounts must not receive unknown classification outputs. Use existing refusal audit/metrics with content_policy reason; dedicated bounded refusal counter, dashboard and alert. No new dependencies or migration.
+Constitution: I/II inference ownership unchanged; III shared contract/error first; IV universal guard plus audit; V no acquisition; VI telemetry/dashboard/alert; VII spec/plan/tests before implementation. No exception.
+Isolate fix from unfinished 026. Build/scan/SBOM and replace API only, preserve other services. Integrate tested fix into 026 before resuming size and gallery work. Native worker defense deployed with tested node candidate in 026; API admission enforcement ships first.

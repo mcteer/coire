@@ -75,7 +75,7 @@ export function ImageInputField({
           {label}: {error}
         </p>
       )}
-      <p>
+      <p className="image-input-help">
         Private inputs count toward your storage quota until deleted. Deleting an input used by an
         active job requests cancellation; bytes are removed after that job stops.
       </p>

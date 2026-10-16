@@ -30,8 +30,9 @@ from coire_api.images.input_references import release_image_input_references
 from coire_api.images.job_capacity import mark_image_job_started, release_pending_image_job_capacity
 from coire_api.images.jobs import _policy
 from coire_api.images.quota import _QUOTA_LOCK
+from coire_api.images.safety import ensure_image_content_allowed
 from coire_api.placement.service import lock_nodes_for_admission
-from coire_core.errors import ImageConflict
+from coire_core.errors import ImageConflict, ImageContentBlocked
 from coire_core.image_assets import FLUX_FILL_REPO_ID
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.image_worker import (
@@ -333,7 +334,10 @@ async def _access_current(session: AsyncSession, row: ImageJobRow, *, explicit: 
         ):
             return False
     snapshot, required, _ = _policy(row)
-    del snapshot
+    try:
+        ensure_image_content_allowed(snapshot.effective_spec.prompt, explicit=explicit)
+    except ImageContentBlocked:
+        return False
     names = required | ({"explicit"} if explicit else set())
     if not names:
         return True

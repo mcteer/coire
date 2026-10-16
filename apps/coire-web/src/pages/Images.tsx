@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   cancelImageJob,
   deleteImageOutput,
+  deleteImageHistory,
   downloadImageOutput,
   listImageJobs,
   listImageModels,
@@ -17,6 +18,7 @@ import {
   type ImageSubmitRequest,
 } from "../api/images";
 import { ApiError } from "../api/client";
+import { ConfirmAction } from "../components/ConfirmAction";
 import { ImageForm } from "../components/images/ImageForm";
 import { ImageGallery } from "../components/images/ImageGallery";
 import { ImageMetadataImport } from "../components/images/ImageMetadataImport";
@@ -31,6 +33,8 @@ export function Images({
   canEditPresets?: boolean;
   canGenerateExplicit?: boolean;
 }) {
+  const [historySelection, setHistorySelection] = useState<Set<string>>(new Set());
+  const [deletingHistory, setDeletingHistory] = useState(false);
   const [showOlderJobs, setShowOlderJobs] = useState(false);
   const [jobs, setJobs] = useState<ImageJob[]>([]);
   const [outputs, setOutputs] = useState<ImageOutput[]>([]);
@@ -50,6 +54,15 @@ export function Images({
   const [reuse, setReuse] = useState<{ request: ImageSubmitRequest; revision: number } | null>(
     null,
   );
+  useEffect(() => {
+    const terminal = new Set(
+      jobs.filter((job) => isTerminalImageState(job.state)).map((job) => job.id),
+    );
+    setHistorySelection((current) => {
+      const next = new Set([...current].filter((id) => terminal.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [jobs]);
   const active = useImageJob(activeJobId);
   const refreshedTerminalJob = useRef<string | null>(null);
 
@@ -182,6 +195,28 @@ export function Images({
       setOutputs((current) => current.filter((item) => item.id !== outputId));
     } catch (cause) {
       noteFailure(cause);
+      throw cause;
+    }
+  };
+
+  const deleteSelectedHistory = async () => {
+    const ids = jobs
+      .filter((job) => historySelection.has(job.id) && isTerminalImageState(job.state))
+      .map((job) => job.id);
+    setDeletingHistory(true);
+    try {
+      const result = await deleteImageHistory(ids);
+      const deleted = new Set(result.deleted_job_ids);
+      setJobs((current) => current.filter((job) => !deleted.has(job.id)));
+      setHistorySelection(new Set());
+      if (activeJobId && deleted.has(activeJobId)) {
+        setActiveJobId(null);
+        setReceipt(null);
+      }
+    } catch (cause) {
+      noteFailure(cause);
+    } finally {
+      setDeletingHistory(false);
     }
   };
 
@@ -227,14 +262,19 @@ export function Images({
             reuse={reuse}
           />
         )}
-        <ImageMetadataImport
-          onImport={(request) =>
-            setReuse((current) => ({ request, revision: (current?.revision ?? 0) + 1 }))
-          }
-        />
-        <button className="button" type="button" onClick={() => void refresh()}>
-          Refresh
-        </button>
+        <div className="image-workspace-tools">
+          <details className="image-recipe-tools">
+            <summary>Import image settings</summary>
+            <ImageMetadataImport
+              onImport={(request) =>
+                setReuse((current) => ({ request, revision: (current?.revision ?? 0) + 1 }))
+              }
+            />
+          </details>
+          <button className="button image-refresh" type="button" onClick={() => void refresh()}>
+            Refresh
+          </button>
+        </div>
         {error && (
           <p className="error" role="alert">
             {error}
@@ -247,15 +287,54 @@ export function Images({
         )}
       </section>
       {!loading && (
-        <PresetEditor
-          presets={presets}
-          models={models}
-          canEdit={canEditPresets}
-          onChanged={refresh}
-        />
+        <details className="image-preset-tools">
+          <summary>Manage presets</summary>
+          <PresetEditor
+            presets={presets}
+            models={models}
+            canEdit={canEditPresets}
+            onChanged={refresh}
+          />
+        </details>
       )}
       <section className="panel glass wide" aria-label="Image jobs">
         <h2>Generation history</h2>
+        <div className="image-history-selection">
+          <p>Delete completed history and its events permanently. Library images remain.</p>
+          <button
+            className="button"
+            type="button"
+            disabled={deletingHistory || !jobs.some((job) => isTerminalImageState(job.state))}
+            onClick={() =>
+              setHistorySelection(
+                new Set(jobs.filter((job) => isTerminalImageState(job.state)).map((job) => job.id)),
+              )
+            }
+          >
+            Select completed history
+          </button>
+          {historySelection.size > 0 && (
+            <>
+              <span role="status">{historySelection.size} selected</span>
+              <button
+                className="button"
+                type="button"
+                disabled={deletingHistory}
+                onClick={() => setHistorySelection(new Set())}
+              >
+                Clear history selection
+              </button>
+              {!deletingHistory && (
+                <ConfirmAction
+                  label="Delete history"
+                  target={`${historySelection.size} selected entries permanently`}
+                  onConfirm={deleteSelectedHistory}
+                />
+              )}
+            </>
+          )}
+          {deletingHistory && <span role="status">Deleting history…</span>}
+        </div>
         {loading ? (
           <p>Loading image jobs…</p>
         ) : jobs.length === 0 ? (
@@ -270,6 +349,25 @@ export function Images({
               {(showOlderJobs ? jobs : jobs.slice(0, 5)).map((job) => (
                 <li key={job.id}>
                   <div className="image-job-description">
+                    {isTerminalImageState(job.state) && (
+                      <label className="image-history-check">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select history ${job.id}`}
+                          checked={historySelection.has(job.id)}
+                          disabled={deletingHistory}
+                          onChange={(event) =>
+                            setHistorySelection((current) => {
+                              const next = new Set(current);
+                              if (event.target.checked) next.add(job.id);
+                              else next.delete(job.id);
+                              return next;
+                            })
+                          }
+                        />
+                        Select entry
+                      </label>
+                    )}
                     <strong>{job.effective_spec?.prompt || "Image generation"}</strong>
                     <small>
                       <time dateTime={job.created_at}>

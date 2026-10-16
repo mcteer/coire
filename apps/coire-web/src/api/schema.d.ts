@@ -1126,6 +1126,23 @@ export interface paths {
         patch: operations["update_model_api_v1_admin_models__model_id__patch"];
         trace?: never;
     };
+    "/api/v1/admin/models/{model_id}/image-resolution-qualification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Qualify Image Resolution */
+        post: operations["qualify_image_resolution_api_v1_admin_models__model_id__image_resolution_qualification_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/models/{model_id}/job": {
         parameters: {
             query?: never;
@@ -2753,6 +2770,23 @@ export interface paths {
          * @description Persist the job before returning its receipt. Retries with the same key replay it.
          */
         post: operations["submit_image_job_api_v1_images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/images/history/deletions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Image History */
+        post: operations["delete_image_history_api_v1_images_history_deletions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8939,6 +8973,19 @@ export interface components {
             /** Recipe Input Max Bytes */
             recipe_input_max_bytes: number;
         };
+        /** ImageHistoryDeletionReceipt */
+        ImageHistoryDeletionReceipt: {
+            /** Deleted Job Ids */
+            deleted_job_ids: string[];
+        };
+        /**
+         * ImageHistoryDeletionRequest
+         * @description Permanently remove terminal history events, retaining image provenance.
+         */
+        ImageHistoryDeletionRequest: {
+            /** Job Ids */
+            job_ids: string[];
+        };
         /** ImageInput */
         ImageInput: {
             /** Byte Count */
@@ -9147,6 +9194,10 @@ export interface components {
              * @default []
              */
             loras: components["schemas"]["ImageAdapterOption"][];
+            /** Mode Capabilities */
+            mode_capabilities?: {
+                [key: string]: components["schemas"]["ImageCapabilityProfile"];
+            };
             /** Required Dependency Count */
             required_dependency_count: number;
             /**
@@ -9303,6 +9354,47 @@ export interface components {
              * @constant
              */
             schema_version: 1;
+        };
+        /** ImageResolutionBounds */
+        ImageResolutionBounds: {
+            /**
+             * Max Height
+             * @default 1980
+             */
+            max_height: number;
+            /**
+             * Max Width
+             * @default 1980
+             */
+            max_width: number;
+        };
+        /** ImageResolutionQualificationReceipt */
+        ImageResolutionQualificationReceipt: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /**
+             * State
+             * @default queued
+             * @constant
+             */
+            state: "queued";
+        };
+        /** ImageResolutionQualificationRequest */
+        ImageResolutionQualificationRequest: {
+            bounds?: components["schemas"]["ImageResolutionBounds"];
+            /**
+             * Reservation Bytes
+             * @default 137438953472
+             */
+            reservation_bytes: number;
         };
         /**
          * ImageSpec
@@ -18674,6 +18766,43 @@ export interface operations {
             };
         };
     };
+    qualify_image_resolution_api_v1_admin_models__model_id__image_resolution_qualification_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageResolutionQualificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageResolutionQualificationReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_job_api_v1_admin_models__model_id__job_get: {
         parameters: {
             query?: never;
@@ -22486,6 +22615,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImageJobReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_image_history_api_v1_images_history_deletions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageHistoryDeletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageHistoryDeletionReceipt"];
                 };
             };
             /** @description Validation Error */

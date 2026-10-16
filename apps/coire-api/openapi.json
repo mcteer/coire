@@ -11399,7 +11399,6 @@
               {
                 "maximum": 4096.0,
                 "minimum": 64.0,
-                "multipleOf": 8.0,
                 "type": "integer"
               },
               {
@@ -11426,7 +11425,6 @@
               {
                 "maximum": 4096.0,
                 "minimum": 64.0,
-                "multipleOf": 8.0,
                 "type": "integer"
               },
               {
@@ -11443,7 +11441,6 @@
           "max_height": {
             "maximum": 4096.0,
             "minimum": 64.0,
-            "multipleOf": 8.0,
             "title": "Max Height",
             "type": "integer"
           },
@@ -11475,7 +11472,6 @@
           "max_width": {
             "maximum": 4096.0,
             "minimum": 64.0,
-            "multipleOf": 8.0,
             "title": "Max Width",
             "type": "integer"
           },
@@ -11487,7 +11483,6 @@
           "min_height": {
             "maximum": 4096.0,
             "minimum": 64.0,
-            "multipleOf": 8.0,
             "title": "Min Height",
             "type": "integer"
           },
@@ -11500,7 +11495,6 @@
           "min_width": {
             "maximum": 4096.0,
             "minimum": 64.0,
-            "multipleOf": 8.0,
             "title": "Min Width",
             "type": "integer"
           },
@@ -12095,6 +12089,45 @@
           "daily_outputs_per_owner"
         ],
         "title": "ImageGenerationLimits",
+        "type": "object"
+      },
+      "ImageHistoryDeletionReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted_job_ids": {
+            "items": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "type": "string"
+            },
+            "title": "Deleted Job Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "deleted_job_ids"
+        ],
+        "title": "ImageHistoryDeletionReceipt",
+        "type": "object"
+      },
+      "ImageHistoryDeletionRequest": {
+        "additionalProperties": false,
+        "description": "Permanently remove terminal history events, retaining image provenance.",
+        "properties": {
+          "job_ids": {
+            "items": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Job Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_ids"
+        ],
+        "title": "ImageHistoryDeletionRequest",
         "type": "object"
       },
       "ImageInput": {
@@ -12781,6 +12814,16 @@
             "title": "Loras",
             "type": "array"
           },
+          "mode_capabilities": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ImageCapabilityProfile"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/ImageMode"
+            },
+            "title": "Mode Capabilities",
+            "type": "object"
+          },
           "required_dependency_count": {
             "maximum": 16.0,
             "minimum": 0.0,
@@ -13194,6 +13237,71 @@
         "title": "ImageRecipeImportRequest",
         "type": "object"
       },
+      "ImageResolutionBounds": {
+        "additionalProperties": false,
+        "properties": {
+          "max_height": {
+            "default": 1980,
+            "maximum": 1980.0,
+            "minimum": 512.0,
+            "title": "Max Height",
+            "type": "integer"
+          },
+          "max_width": {
+            "default": 1980,
+            "maximum": 1980.0,
+            "minimum": 512.0,
+            "title": "Max Width",
+            "type": "integer"
+          }
+        },
+        "title": "ImageResolutionBounds",
+        "type": "object"
+      },
+      "ImageResolutionQualificationReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "state": {
+            "const": "queued",
+            "default": "queued",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "job_id"
+        ],
+        "title": "ImageResolutionQualificationReceipt",
+        "type": "object"
+      },
+      "ImageResolutionQualificationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "bounds": {
+            "$ref": "#/components/schemas/ImageResolutionBounds"
+          },
+          "reservation_bytes": {
+            "default": 137438953472,
+            "maximum": 1099511627776.0,
+            "minimum": 1073741824.0,
+            "title": "Reservation Bytes",
+            "type": "integer"
+          }
+        },
+        "title": "ImageResolutionQualificationRequest",
+        "type": "object"
+      },
       "ImageSpec": {
         "additionalProperties": false,
         "description": "Fully specified client-side values before model-capability validation.",
@@ -13220,7 +13328,6 @@
           "height": {
             "maximum": 4096.0,
             "minimum": 64.0,
-            "multipleOf": 8.0,
             "title": "Height",
             "type": "integer"
           },
@@ -13355,7 +13462,6 @@
           "width": {
             "maximum": 4096.0,
             "minimum": 64.0,
-            "multipleOf": 8.0,
             "title": "Width",
             "type": "integer"
           }
@@ -13417,7 +13523,6 @@
               {
                 "maximum": 4096.0,
                 "minimum": 64.0,
-                "multipleOf": 8.0,
                 "type": "integer"
               },
               {
@@ -13635,7 +13740,6 @@
               {
                 "maximum": 4096.0,
                 "minimum": 64.0,
-                "multipleOf": 8.0,
                 "type": "integer"
               },
               {
@@ -13689,7 +13793,6 @@
               {
                 "maximum": 4096.0,
                 "minimum": 64.0,
-                "multipleOf": 8.0,
                 "type": "integer"
               },
               {
@@ -13902,7 +14005,6 @@
               {
                 "maximum": 4096.0,
                 "minimum": 64.0,
-                "multipleOf": 8.0,
                 "type": "integer"
               },
               {
@@ -36467,6 +36569,80 @@
         ]
       }
     },
+    "/api/v1/admin/models/{model_id}/image-resolution-qualification": {
+      "post": {
+        "operationId": "qualify_image_resolution_api_v1_admin_models__model_id__image_resolution_qualification_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Model Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageResolutionQualificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageResolutionQualificationReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Qualify Image Resolution",
+        "tags": [
+          "admin: models"
+        ]
+      }
+    },
     "/api/v1/admin/models/{model_id}/job": {
       "get": {
         "operationId": "get_job_api_v1_admin_models__model_id__job_get",
@@ -44272,6 +44448,70 @@
           }
         ],
         "summary": "Submit Image Job",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/images/history/deletions": {
+      "post": {
+        "operationId": "delete_image_history_api_v1_images_history_deletions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageHistoryDeletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageHistoryDeletionReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Image History",
         "tags": [
           "images"
         ]

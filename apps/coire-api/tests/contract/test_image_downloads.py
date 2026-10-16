@@ -48,7 +48,14 @@ def _output(*, explicit: bool = False, blob_key: str = "outputs/sample.png") -> 
         size_bytes=7,
         file_sha256=hashlib.sha256(b"pngdata").hexdigest(),
         pixel_sha256="a" * 64,
-        recipe={"resolved": {"spec": {"content_mode": "explicit" if explicit else "standard"}}},
+        recipe={
+            "resolved": {
+                "spec": {
+                    "content_mode": "explicit" if explicit else "standard",
+                    "prompt": "A ceramic teapot",
+                }
+            }
+        },
         content_tag="explicit" if explicit else "normal",
         classifier_provenance={
             "tag": "normal",
