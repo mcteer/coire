@@ -64,7 +64,11 @@ from coire_scheduler.files import (
     purge_expired_temporary_outputs,
     purge_failed_file_outputs,
 )
-from coire_scheduler.image_inputs import image_normalize_workflow, image_recipe_workflow
+from coire_scheduler.image_inputs import (
+    image_normalize_workflow,
+    image_recipe_workflow,
+    sweep_normalized_input_copies,
+)
 from coire_scheduler.image_latency import monitor_image_latency
 from coire_scheduler.image_residency import sweep_idle_image_workers
 from coire_scheduler.images import (
@@ -571,6 +575,7 @@ async def dispatch_idle_ttl(stop: asyncio.Event) -> None:
             logger.exception("placement idle-TTL dispatcher pass failed")
         try:
             await sweep_idle_image_workers(settings)
+            await sweep_normalized_input_copies(settings)
         except Exception:
             logger.exception("image idle-TTL dispatcher pass failed")
         with suppress(TimeoutError):

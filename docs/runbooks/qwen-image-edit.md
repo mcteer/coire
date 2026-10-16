@@ -1,5 +1,7 @@
 # Qwen photo editing
 
+Measured rollout evidence is recorded in [the acceptance record](qwen-image-edit-acceptance.md).
+
 Choose **Qwen Image Edit 2509 (Q8)** in Images. Its mode is **Edit a photo**. Upload a
 source photo, choose output size/aspect ratio and describe the changes. For a portrait,
 ask to retain the same person's facial features, hair and appearance while changing the
@@ -22,6 +24,8 @@ queue/progress feedback, saved recipe reuse, preview/download, history deletion 
 bulk deletion use the existing owner-scoped image paths. Photo edits have a bounded two-hour
 queue/execution deadline (`COIRE_IMAGE_EDIT_JOB_TIMEOUT_S`); other image modes retain
 their existing thirty-minute limit. Cancel from job progress at any time.
+The real 1024×768 default-quality acceptance edit took about 13 minutes, including cold
+loading and publication. Higher resolution can take longer; step progress remains visible.
 
 ## Reviewed model and native runtime
 
@@ -55,6 +59,14 @@ dashboard panel and `CoireImageBaseOrPhotoEditQualificationFailed`. Existing nod
 publication, transfer and classification alerts apply. Admin model detail retains both-copy
 validation results. Cancel through authenticated job APIs; unload only an idle image worker
 through `DELETE /api/v1/admin/image-workers/{instance_id}`. Never kill unrelated engines.
+
+Deleted reference cleanup has two owners: the scheduler uses the existing private file-worker
+credential to purge the normalized UUID filename, then API maintenance purges the original
+and settles quota. The API's derived volume stays read-only. Inspect the input purge-age alert,
+`coire_image_input_worker_total`, `coire.scheduler.image_input.purge` and
+`coire.file_worker.image_input_purge` for failures. Busy workers retry; active references and
+the existing in-progress-upload grace prevent early cleanup. Keep API, scheduler and file-worker
+builds together when rolling back this cleanup path.
 
 Rollback requires the retained API/scheduler/web image pins and immutable node baseline.
 Drain active edit jobs before reverting contracts; old runtimes cannot accept `edit` mode.
