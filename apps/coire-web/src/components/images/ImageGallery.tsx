@@ -134,35 +134,41 @@ export function ImageGallery({
                   <button
                     className="button"
                     type="button"
-                    onClick={() => onRegenerate(output, false)}
-                    aria-label={`Regenerate image ${output.id}`}
-                  >
-                    Regenerate
-                  </button>
-                  <button
-                    className="button"
-                    type="button"
-                    onClick={() => onRegenerate(output, true)}
-                    aria-label={`Generate new seed from image ${output.id}`}
-                  >
-                    New seed
-                  </button>
-                  <button
-                    className="button"
-                    type="button"
                     disabled={busyId === output.id}
                     onClick={() => onDownload(output)}
                     aria-label={`Download image ${output.id}`}
                   >
                     {busyId === output.id ? "Downloading…" : "Download"}
                   </button>
-                  <ConfirmAction
-                    target={output.id.slice(0, 8)}
-                    label="Delete"
-                    ariaLabel={`Delete image ${output.id}`}
-                    onConfirm={() => onDelete(output.id)}
-                  />
                 </div>
+                <details className="image-more-actions">
+                  <summary>More actions</summary>
+                  <div>
+                    {" "}
+                    <button
+                      className="button"
+                      type="button"
+                      onClick={() => onRegenerate(output, false)}
+                      aria-label={`Regenerate image ${output.id}`}
+                    >
+                      Regenerate
+                    </button>
+                    <button
+                      className="button"
+                      type="button"
+                      onClick={() => onRegenerate(output, true)}
+                      aria-label={`Generate new seed from image ${output.id}`}
+                    >
+                      New seed
+                    </button>
+                    <ConfirmAction
+                      target={output.id.slice(0, 8)}
+                      label="Delete"
+                      ariaLabel={`Delete image ${output.id}`}
+                      onConfirm={() => onDelete(output.id)}
+                    />
+                  </div>
+                </details>
               </div>
             </li>
           ))}

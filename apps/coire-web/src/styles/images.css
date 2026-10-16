@@ -167,8 +167,9 @@
 
 .image-gallery-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
   gap: var(--s-4);
+  align-items: start;
   padding: 0;
   margin: 0 0 var(--s-4);
   list-style: none;
@@ -245,8 +246,8 @@
 .image-gallery-actions .button {
   min-width: 0;
   width: 100%;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 @media (max-width: 600px) {
@@ -256,19 +257,15 @@
   }
 }
 
-/* A creative workbench: controls and library share the available desktop canvas. */
+/* Keep one page scroll flow and enough space for readable card actions. */
 @media (min-width: 1251px) {
   .grid.image-page {
-    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
     align-items: start;
   }
   .grid.image-page > section:first-child {
     grid-column: 1;
     grid-row: 1 / span 3;
-    position: sticky;
-    top: 88px;
-    max-height: calc(100dvh - 116px);
-    overflow: auto;
   }
   .grid.image-page > .image-gallery {
     grid-column: 2;
@@ -277,40 +274,131 @@
   .grid.image-page > [aria-label="Image jobs"] {
     grid-column: 2;
     grid-row: 2;
-    max-height: 300px;
-    overflow: auto;
   }
   .grid.image-page > [aria-label="Image presets"] {
     grid-column: 1 / -1;
     grid-row: 4;
-  }
-  .grid.image-page > .image-timeline {
-    grid-column: 2;
-  }
-  .image-gallery-grid {
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   }
 }
 .image-gallery-card {
   box-shadow: none;
 }
 .image-gallery-card-body {
-  font-size: 11px;
+  padding: 16px;
+  gap: 12px;
 }
-.image-gallery .button {
-  padding: 7px 10px;
-  font-size: 10px;
+.image-gallery-actions .button {
+  padding: 9px 10px;
+  font-size: 12px;
+  min-height: 38px;
 }
 .image-gallery-header {
   align-items: start;
   flex-wrap: wrap;
 }
-
-.image-gallery-actions .button:not(.danger) {
+.image-gallery-actions .button:not(.danger),
+.image-more-actions .button:not(.danger) {
   color: var(--ink-2);
   background: var(--surface);
   border: 1px solid var(--border);
   box-shadow: none;
+}
+.image-more-actions summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-2);
+  padding: 4px 0;
+}
+.image-more-actions > div {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+.image-more-actions .button {
+  width: 100%;
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 9px 12px;
+}
+.image-job-history > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--ink-2);
+  font-size: 14px;
+  padding: 8px 0;
+}
+.image-job-history > summary::before {
+  content: "›";
+}
+.image-job-history[open] > summary::before {
+  transform: rotate(90deg);
+}
+.image-job-history > summary span {
+  font-size: 12px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  padding: 2px 8px;
+}
+.image-job-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+.image-job-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+.image-job-description {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.image-job-description strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+}
+.image-job-description small {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.image-job-state {
+  border-radius: 99px;
+  padding: 4px 9px;
+  background: var(--surface-2);
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.image-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.image-job-actions .button {
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+}
+@media (max-width: 600px) {
+  .image-job-list > li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+  .image-job-actions {
+    grid-column: 1 / -1;
+  }
 }
 
 .image-content-policy {
@@ -405,4 +493,11 @@
 }
 #image-library {
   scroll-margin-top: 100px;
+}
+.image-history-more {
+  margin-top: 12px;
+  background: var(--surface);
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+  font-size: 12px;
 }

@@ -105,7 +105,9 @@ test("keeps attachment and model attribution when a later answer uses another mo
           attachment_selections: [{ file_id: fileId, mode: "visual", pages: [2, 4] }],
         }}
       />
-      <Message message={{ ...message, id: "00000000-0000-0000-0000-000000000012", text: "First" }} />
+      <Message
+        message={{ ...message, id: "00000000-0000-0000-0000-000000000012", text: "First" }}
+      />
       <Message
         message={{
           ...message,
@@ -121,4 +123,14 @@ test("keeps attachment and model attribution when a later answer uses another mo
   );
   expect(screen.getByText("First").closest("article")).toHaveTextContent("Older model name");
   expect(screen.getByText("Second").closest("article")).toHaveTextContent("New model name");
+});
+
+test("does not render an empty assistant bubble or feedback without an answer", () => {
+  const view = render(
+    <Message message={{ ...message, text: "", reasoning: "" }}>
+      <button>Helpful answer</button>
+    </Message>,
+  );
+  expect(view.container.querySelector("article")).toBeNull();
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });

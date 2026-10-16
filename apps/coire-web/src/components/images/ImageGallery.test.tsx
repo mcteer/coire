@@ -55,8 +55,12 @@ test("keeps private gallery actions usable when a preview fails", async () => {
   fireEvent.click(screen.getByRole("button", { name: `Download image ${output.id}` }));
   expect(onDownload).toHaveBeenCalledWith(output);
   fireEvent.click(screen.getByRole("button", { name: `Reuse settings from image ${output.id}` }));
+  expect(screen.getByText("More actions").closest("details")).not.toHaveAttribute("open");
+  fireEvent.click(screen.getByText("More actions"));
   fireEvent.click(screen.getByRole("button", { name: `Regenerate image ${output.id}` }));
-  fireEvent.click(screen.getByRole("button", { name: `Generate new seed from image ${output.id}` }));
+  fireEvent.click(
+    screen.getByRole("button", { name: `Generate new seed from image ${output.id}` }),
+  );
   expect(onReuse).toHaveBeenCalledWith(output);
   expect(onRegenerate).toHaveBeenNthCalledWith(1, output, false);
   expect(onRegenerate).toHaveBeenNthCalledWith(2, output, true);

@@ -221,3 +221,62 @@ Live web tag: `coire-web:103-image-progress`; image:
 `sha256:94174f45a4c62fd7c93250595b783845cb8a2ff20d569ff690c5b7b7febc9d24`.
 Only web changed; all 14 other container identities/images, including the validated
 API, were preserved. Rollback is the preceding `coire-web:025-color-themes` image.
+
+## Populated element layout correction — issue #105 (2026-10-16)
+
+Issue-first bug fix on `fix/105-interface-element-layout`, stacked on issue #103.
+The owner supplied screenshots of mid-word gallery action wrapping, stretched empty
+card bodies, touching job buttons in nested scrolling panels, and disabled feedback
+beneath an empty interrupted response. These violate the existing professional UI,
+responsive image UI and truthful chat/feedback requirements (025, 015 FR-034, 014,
+018); no new API or product capability is introduced.
+
+Plan executed: add a failing empty-assistant regression; correct gallery sizing,
+alignment and action hierarchy; replace raw job rows with spaced summaries and a
+collapsed five-row history; remove nested generator/history scrolling; suppress
+empty assistant markup and feedback for incomplete/empty answers; group recovery
+actions; make completed-answer feedback and code-copy secondary; validate exact
+populated/error elements in WebKit before activation. The retry and continuation
+tests now stream real answer text rather than expecting an empty assistant bubble.
+No test gate was disabled.
+
+Gallery cards use a 250px minimum where space permits and align to their own content.
+Reuse settings/Download remain visible, with regeneration/new-seed/deletion under
+More actions. Whole labels fit at all checked widths. Recent jobs show prompt,
+time, short identity, state and separated actions, with optional older rows. Empty
+failed turns say No answer received; partial turns preserve the answer and grouped
+retry/continue controls. Completed answers have labelled icon ratings, comparison
+and optional tags. Stored conversation data, feedback capture and engine behavior
+are unchanged.
+
+Validation: 290 tests / 66 files pass without skips; strict TypeScript/Vite, ESLint,
+Prettier and diff checks pass. All seven image policy rules pass, Trivy reports zero
+CRITICAL findings including unfixed, SPDX SBOM generated. Constitution I–V boundaries
+are unchanged; III uses existing generated schemas; VI preserves existing events,
+metrics, spans, audit paths, dashboards and alerts; VII follows approved specs and
+the issue-first regression workflow. No schema, API, migration, dependency, licence,
+access-policy or backend change; engine integration is not affected.
+
+Headless Playwright WebKit inspects the actual populated owner library and existing
+empty interrupted chat at widths 390, 768, 1024, 1280, 1440 and 1600. It measures
+button text ranges for split words, page overflow, nested panel scrolling and job
+row bounds/overlaps. All checks pass: no split action words, page overflow, nested
+panel scrolls or overlapping job-row elements; desktop rows measure 78px with gaps.
+Seventeen visual captures cover light/dark library, expanded card actions/history,
+empty interrupted chat, completed answer/code/feedback and partial-turn recovery.
+Screenshots were opened and inspected; that inspection caught and corrected awkward
+partial-recovery action grouping before the final build.
+
+The owner has no completed saved answer in this browser's history. Completed-answer
+and partial-answer visuals therefore use explicitly labelled read-only browser API
+fixtures on the actual components; they do not modify the owner's stored conversation
+or claim a successful engine response. The populated library and empty failed-turn
+checks use actual authenticated API data. Preview checks serve only built static
+assets locally; final checks use the installed production assets. Private evidence,
+screenshot fixtures, image gates and rollback compose: `~/.coire/qualification/105/`.
+No image/engine workload, test API key, persistent test container or volume was
+created. Browser contexts close after each run and fixture routes die with them.
+
+Activated only `coire-web:105-interface-layout` (`sha256:aec8260220f925cbe14c3b3346dd38b0df07a04b6fad25fa90cde6a4a54c5ffd`). All 14 other
+container identities/images are preserved; rollback is the preceding
+`coire-web:103-image-progress` image.

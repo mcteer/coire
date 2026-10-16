@@ -31,6 +31,7 @@ export function Images({
   canEditPresets?: boolean;
   canGenerateExplicit?: boolean;
 }) {
+  const [showOlderJobs, setShowOlderJobs] = useState(false);
   const [jobs, setJobs] = useState<ImageJob[]>([]);
   const [outputs, setOutputs] = useState<ImageOutput[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -254,50 +255,88 @@ export function Images({
         />
       )}
       <section className="panel glass wide" aria-label="Image jobs">
-        <h2>Jobs</h2>
+        <h2>Generation history</h2>
         {loading ? (
           <p>Loading image jobs…</p>
         ) : jobs.length === 0 ? (
           <p>No image jobs yet.</p>
         ) : null}
         {jobs.length > 0 && (
-          <ul>
-            {jobs.map((job) => (
-              <li key={job.id}>
-                <span className="mono">{job.id}</span> · {job.state}
-                {job.failure_code && <> · {job.failure_code}</>}
-                {job.id !== activeJobId && (
-                  <button
-                    className="button"
-                    type="button"
-                    onClick={() => {
-                      setReceipt({
-                        job_id: job.id,
-                        state: job.state,
-                        queue_position: job.queue_position,
-                      });
-                      setActiveJobId(job.id);
-                    }}
-                    aria-label={`View progress for image job ${job.id}`}
-                  >
-                    View progress
-                  </button>
-                )}
-                {!isTerminalImageState(job.state) &&
-                  (job.id !== activeJobId || models.length === 0) && (
-                    <button
-                      className="button"
-                      type="button"
-                      disabled={busyJob === job.id}
-                      onClick={() => void stop(job.id)}
-                      aria-label={`Stop image job ${job.id}`}
-                    >
-                      {busyJob === job.id ? "Stopping…" : "Stop"}
-                    </button>
-                  )}
-              </li>
-            ))}
-          </ul>
+          <details className="image-job-history">
+            <summary>
+              Recent jobs <span>{jobs.length}</span>
+            </summary>
+            <ul className="image-job-list">
+              {(showOlderJobs ? jobs : jobs.slice(0, 5)).map((job) => (
+                <li key={job.id}>
+                  <div className="image-job-description">
+                    <strong>{job.effective_spec?.prompt || "Image generation"}</strong>
+                    <small>
+                      <time dateTime={job.created_at}>
+                        {new Date(job.created_at).toLocaleString()}
+                      </time>{" "}
+                      · {job.id.slice(-8)}
+                    </small>
+                    {job.failure_code && <small className="error">{job.failure_code}</small>}
+                  </div>
+                  <span className={`image-job-state state-${job.state}`}>
+                    {
+                      {
+                        succeeded: "Complete",
+                        failed: "Failed",
+                        cancelled: "Stopped",
+                        queued: "Queued",
+                        reserving: "Preparing",
+                        running: "Generating",
+                        transferring: "Saving",
+                        cancelling: "Stopping",
+                      }[job.state]
+                    }
+                  </span>
+                  <div className="image-job-actions">
+                    {job.id !== activeJobId && (
+                      <button
+                        className="button"
+                        type="button"
+                        onClick={() => {
+                          setReceipt({
+                            job_id: job.id,
+                            state: job.state,
+                            queue_position: job.queue_position,
+                          });
+                          setActiveJobId(job.id);
+                        }}
+                        aria-label={`View progress for image job ${job.id}`}
+                      >
+                        View progress
+                      </button>
+                    )}
+                    {!isTerminalImageState(job.state) &&
+                      (job.id !== activeJobId || models.length === 0) && (
+                        <button
+                          className="button"
+                          type="button"
+                          disabled={busyJob === job.id}
+                          onClick={() => void stop(job.id)}
+                          aria-label={`Stop image job ${job.id}`}
+                        >
+                          {busyJob === job.id ? "Stopping…" : "Stop"}
+                        </button>
+                      )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {jobs.length > 5 && (
+              <button
+                className="button image-history-more"
+                type="button"
+                onClick={() => setShowOlderJobs((value) => !value)}
+              >
+                {showOlderJobs ? "Show fewer jobs" : "Show older jobs"}
+              </button>
+            )}
+          </details>
         )}
       </section>
       <ImageGallery

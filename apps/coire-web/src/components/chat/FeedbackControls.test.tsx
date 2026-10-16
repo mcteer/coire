@@ -24,16 +24,14 @@ test("disabled capture prevents thumbs and comparison requests", () => {
   expect(vote).not.toHaveBeenCalled();
 });
 test("thumb submission is independent from pair creation", async () => {
-  const vote = vi
-    .spyOn(feedback, "updateThumb")
-    .mockResolvedValue({
-      id: "feedback",
-      version: 1,
-      judgement: "up",
-      source: "owner",
-      disclosure_version: "feedback-v1",
-      disclosure: "Policy",
-    });
+  const vote = vi.spyOn(feedback, "updateThumb").mockResolvedValue({
+    id: "feedback",
+    version: 1,
+    judgement: "up",
+    source: "owner",
+    disclosure_version: "feedback-v1",
+    disclosure: "Policy",
+  });
   const compare = vi.spyOn(feedback, "createComparison");
   render(
     <FeedbackControls
@@ -57,15 +55,13 @@ test("thumb submission is independent from pair creation", async () => {
   expect(compare).not.toHaveBeenCalled();
 });
 test("explicit compare uses the source identity and current conversation revision", async () => {
-  const compare = vi
-    .spyOn(feedback, "createComparison")
-    .mockResolvedValue({
-      id: "pair",
-      version: 1,
-      state: "queued",
-      selection_state: "pending",
-      events_path: "/events",
-    });
+  const compare = vi.spyOn(feedback, "createComparison").mockResolvedValue({
+    id: "pair",
+    version: 1,
+    state: "queued",
+    selection_state: "pending",
+    events_path: "/events",
+  });
   const created = vi.fn();
   render(
     <FeedbackControls
@@ -86,4 +82,30 @@ test("explicit compare uses the source identity and current conversation revisio
     ),
   );
   expect(created).toHaveBeenCalledWith(expect.objectContaining({ id: "pair" }));
+});
+
+test("keeps optional tags behind a disclosure and retains accessible rating names", () => {
+  render(
+    <FeedbackControls
+      conversationId="conversation"
+      revision={3}
+      row={row}
+      enabled
+      complete
+      onChange={vi.fn()}
+      onCreated={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Helpful answer" })).toHaveAttribute(
+    "title",
+    "Helpful answer",
+  );
+  const summary = screen.getByText("Feedback tags");
+  expect(summary.closest("details")).not.toHaveAttribute("open");
+  fireEvent.click(summary);
+  expect(summary.closest("details")).toHaveAttribute("open");
+  expect(screen.getByRole("textbox", { name: "Optional tags" })).toHaveAttribute(
+    "placeholder",
+    "clear, accurate",
+  );
 });
