@@ -30,17 +30,22 @@ vi.mock("../components/images/ImageForm", () => ({
   ImageForm: ({
     onSubmit,
     limits,
+    feedback,
   }: {
     onSubmit: (request: object) => void;
     limits?: object | null;
+    feedback?: import("react").ReactNode;
   }) => (
-    <button
-      type="button"
-      disabled={!limits}
-      onClick={() => onSubmit({ model_id: "model", prompt: "test" })}
-    >
-      Generate test
-    </button>
+    <>
+      <button
+        type="button"
+        disabled={!limits}
+        onClick={() => onSubmit({ model_id: "model", prompt: "test" })}
+      >
+        Generate test
+      </button>
+      {feedback}
+    </>
   ),
 }));
 
@@ -104,7 +109,7 @@ test("shows the durable job receipt and progress after submit", async () => {
   render(<Images />);
   fireEvent.click(await screen.findByRole("button", { name: "Generate test" }));
   expect(await screen.findByText(/4 of 4/)).toBeInTheDocument();
-  expect(screen.getByText(JOB)).toBeInTheDocument();
+  expect(screen.getByText(new RegExp(JOB))).toBeInTheDocument();
 });
 
 test("clears stale policy after a failed refresh", async () => {
@@ -132,4 +137,37 @@ test("offers sign-in recovery on an expired image session", async () => {
   render(<Images />);
   expect(await screen.findByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/");
   expect(screen.getByRole("alert")).toBeInTheDocument();
+});
+
+test("acknowledges submission before a receipt and keeps progress beside Generate", async () => {
+  let accept!: (response: Response) => void;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST")
+        return new Promise<Response>((resolve) => {
+          accept = resolve;
+        });
+      const body =
+        String(input) === "/api/v1/images/models"
+          ? { items: [{}], limits: LIMITS }
+          : { items: [], next_cursor: null };
+      return new Response(JSON.stringify(body), {
+        headers: { "content-type": "application/json" },
+      });
+    }),
+  );
+  render(<Images />);
+  const generate = await screen.findByRole("button", { name: "Generate test" });
+  fireEvent.click(generate);
+  expect(screen.getByRole("status")).toHaveTextContent("Submitting your image request");
+  expect(generate.nextElementSibling).toHaveClass("image-submission-feedback");
+  accept(
+    new Response(JSON.stringify({ job_id: JOB, state: "queued" }), {
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  const timeline = await screen.findByRole("region", { name: "Image job progress" });
+  expect(generate.nextElementSibling).toBe(timeline);
+  expect(screen.getByRole("button", { name: "View in library" })).toBeInTheDocument();
 });

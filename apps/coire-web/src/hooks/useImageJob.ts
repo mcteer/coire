@@ -21,6 +21,7 @@ export function useImageJob(jobId: string | null) {
     state,
     step,
     total,
+    queuePosition: snapshot?.queue_position ?? event?.queue_position ?? null,
     cacheStatus: event?.cache_status ?? null,
     workerResidency: event?.worker_residency ?? null,
     terminal: isTerminalImageState(state),

@@ -81,7 +81,12 @@ export function ImageGallery({
   onRegenerate: (output: ImageOutput, newSeed: boolean) => void;
 }) {
   return (
-    <section className="panel glass wide image-gallery" aria-label="Image library">
+    <section
+      id="image-library"
+      tabIndex={-1}
+      className="panel glass wide image-gallery"
+      aria-label="Image library"
+    >
       <div className="image-gallery-header">
         <h2>Library</h2>
         <label>
