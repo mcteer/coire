@@ -2,11 +2,11 @@ groups:
   - name: coire-image
     rules:
       - alert: CoireImageBaseOrPhotoEditQualificationFailed
-        expr: sum(increase(coire_image_validation_total{kind="image_model",outcome="failed"}[5m])) > 0
+        expr: sum(increase(coire_image_photo_edit_qualification_total{outcome="failed"}[5m])) > 0
         for: 0m
         labels: {severity: warning}
         annotations:
-          summary: Base image or photo-edit qualification failed; the model remains unpublished
+          summary: Photo-edit acquisition or qualification failed; the model remains unpublished
       - alert: CoireImageResolutionQualificationFailed
         expr: sum(increase(coire_image_resolution_qualification_total{outcome="failed"}[5m])) > 0
         for: 0m

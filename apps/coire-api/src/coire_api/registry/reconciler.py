@@ -53,6 +53,7 @@ from coire_api.instance import service as instance_service
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_api.placement.service import node_admission_lock
 from coire_api.registry import image_acquisition, service
+from coire_core.image_assets import QWEN_EDIT_REPO_IDS
 from coire_core.models.acquisition import ReservationRequest
 from coire_core.models.adapters import InferenceTarget
 from coire_core.models.audit import AuditAction, AuditOutcome
@@ -87,6 +88,35 @@ _model_state = _meter.create_gauge(
 _engine_state_gauge = _meter.create_gauge(
     "coire_engine_state", description="Engines in each state."
 )
+
+_photo_edit_qualification = _meter.create_counter(
+    "coire_image_photo_edit_qualification_total",
+    unit="1",
+    description="Durably observed photo-edit qualification outcomes, without content or identity labels",
+)
+
+
+def _record_photo_edit_qualification(
+    model: ModelRow, job: DownloadJobRow, outcome: str, role: str = "all"
+) -> None:
+    if getattr(model, "repo_id", None) not in QWEN_EDIT_REPO_IDS:
+        return
+    with tracer.start_as_current_span("coire.api.image.photo_edit_qualification") as span:
+        span.set_attribute("model_id", str(model.id))
+        span.set_attribute("job_id", str(job.id))
+        span.set_attribute("outcome", outcome)
+        span.set_attribute("role", role)
+        _photo_edit_qualification.add(1, {"outcome": outcome, "role": role})
+        logger.info(
+            "photo edit qualification observed",
+            extra={
+                "model_id": str(model.id),
+                "job_id": str(job.id),
+                "outcome": outcome,
+                "role": role,
+            },
+        )
+
 
 GRANT_TTL = timedelta(hours=24)
 ACTOR = "reconciler"
@@ -588,6 +618,7 @@ class RegistryReconciler:
                 ):
                     await self._fail(session, job, model, "image resolution evidence is incomplete")
                     return False
+            _record_photo_edit_qualification(model, job, "copy_validated", role)
             evidence[role] = result.model_dump(mode="json")
             job.image_validation = evidence
             job.updated_at = datetime.now(UTC)
@@ -629,6 +660,7 @@ class RegistryReconciler:
                     "memory_estimate_bytes": model.memory_estimate_bytes,
                 },
             )
+        _record_photo_edit_qualification(model, job, "validated")
         model.image_validated_at = datetime.now(UTC)
         for role, node in (("origin", origin), ("replica", replica)):
             await client.release_reservation(
@@ -779,6 +811,7 @@ class RegistryReconciler:
         reason: str,
         status: JobStatus | None = None,
     ) -> None:
+        _record_photo_edit_qualification(model, job, "failed")
         job.stage = DownloadStage.FAILED
         job.failure_reason = reason
         job.finished_at = datetime.now(UTC)

@@ -33,7 +33,7 @@ their existing thirty-minute limit. Cancel from job progress at any time.
 - The Q8 conversion was saved with 0.22; source comparison confirmed the 2509 architecture,
   native weight layout and tokenizer are compatible candidates for 0.20. Runtime qualification
   remains mandatory. Transformer is 8-bit; the vision/text encoder and VAE retain their
-  stored unquantized precision. Both component indexes/tokenizer files and exact local
+  stored unquantized precision. All three component indexes, both tokenizer files and exact local
   manifest/shards are required. Arbitrary configuration-free repositories are not allowed.
 - Loading is offline with no Hub credentials. Only the audited admin acquisition pipeline
   downloads model weights. The resident pipeline never acquires weights or uses Core for
@@ -47,7 +47,7 @@ owned geometric reference with different dimensions. Every sample checks RGB con
 nondegenerate pixels and exact output size. A physical-memory watchdog terminates only
 the owned validation child if its reservation is exceeded or measurement is unavailable.
 
-Watch image job progress, `coire_image_validation_total`, the base/photo-edit qualification
+Watch image job progress, `coire_image_photo_edit_qualification_total`, the photo-edit qualification
 dashboard panel and `CoireImageBaseOrPhotoEditQualificationFailed`. Existing node-stage,
 publication, transfer and classification alerts apply. Admin model detail retains both-copy
 validation results. Cancel through authenticated job APIs; unload only an idle image worker
