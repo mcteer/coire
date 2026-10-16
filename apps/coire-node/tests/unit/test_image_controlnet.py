@@ -20,8 +20,9 @@ from coire_node.image_runtime.cache import StageCache, StageCacheKey, stage_iden
 from coire_node.store import Store
 
 
+@pytest.mark.parametrize("source_size", [(64, 64), (120, 80), (37, 91)])
 def test_local_union_control_uses_exact_canny_thresholds_and_removes_composite(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_size: tuple[int, int]
 ) -> None:
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
@@ -78,7 +79,10 @@ def test_local_union_control_uses_exact_canny_thresholds_and_removes_composite(
     thresholds: list[tuple[int, int]] = []
 
     def canny(image: Any, low: int, high: int) -> Any:
-        assert image is not None
+        assert image.size == (64, 64)
+        if source_size != (64, 64):
+            assert image.getpixel((0, 0)) == 255
+            assert image.getpixel((32, 32)) == 0
         thresholds.append((low, high))
         return object()
 
@@ -136,7 +140,7 @@ def test_local_union_control_uses_exact_canny_thresholds_and_removes_composite(
 
     monkeypatch.setattr("coire_node.image_runtime.controlnet.importlib.import_module", fake_import)
     source = tmp_path / "source.png"
-    with Image.new("RGB", (64, 64), "white") as image:
+    with Image.new("RGB", source_size, "black") as image:
         image.save(source)
     edge_cache = StageCache(1024 * 1024)
     key = StageCacheKey(

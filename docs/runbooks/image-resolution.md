@@ -33,3 +33,24 @@ pre-migration backup if an operational database restore is required. Avoid rolli
 
 Measured validation, release gates and private evidence locations are recorded in
 [026 execution record](../../specs/026-image-resolution/execution-record.md).
+
+## Reference input dimensions (issue109)
+
+Control references keep their own normalized dimensions and digest in owner storage,
+resolved recipes and node transfer manifests. They do not need to match the output.
+The Studio fits the whole reference proportionally onto the requested native canvas
+with centered white padding before Canny extraction (Lanczos resampling). It does not
+stretch the reference or crop away its edges. The derived edge cache includes the output
+size, thresholds, source digest and preprocessing version. Existing output capability,
+file-size, pixel-count, authorization and quota limits remain enforced. Init/mask inputs
+for other workflows retain their existing alignment contract.
+
+The control mode follows outlines and composition. It is not an identity-preserving
+portrait editor. A task such as placing the same person in a new setting requires a
+reference-aware editing model and a separate qualified integration. Merely increasing
+Canny strength or adding identity instructions does not supply that capability.
+
+Roll back issue109 using the retained exact API/scheduler/web compose pins and prior
+immutable native environments. The API, scheduler and node must agree on the source
+manifest contract; do not deploy only an admission change to old workers. No schema or
+migration is needed: existing width/height fields now correctly describe source bytes.

@@ -238,8 +238,14 @@ async def _retain_generation_inputs(
             or _DIGEST.fullmatch(row.normalized_sha256) is None
             or row.normalized_bytes is None
             or not 0 < row.normalized_bytes <= GENERATION_INPUT_MAX_BYTES
-            or row.normalized_width != spec.width
-            or row.normalized_height != spec.height
+            or row.normalized_width is None
+            or row.normalized_height is None
+            or row.normalized_width < 1
+            or row.normalized_height < 1
+            or (
+                purpose != "control"
+                and (row.normalized_width != spec.width or row.normalized_height != spec.height)
+            )
         ):
             raise ImageValidationError(
                 f"{purpose} image is unavailable or has different dimensions"

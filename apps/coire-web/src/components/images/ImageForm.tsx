@@ -392,7 +392,7 @@ export function ImageForm({
                       txt2img: "Create from text",
                       img2img: "Transform an image",
                       fill: "Edit an area",
-                      control: "Follow a reference",
+                      control: "Follow reference outlines",
                     }[available]
                   }
                 </option>
@@ -406,7 +406,8 @@ export function ImageForm({
                 img2img:
                   "Upload a source image and describe how it should change. Lower strength preserves more of the original.",
                 fill: "Upload your image and a matching mask. White mask areas are regenerated; black areas are preserved.",
-                control: "Upload a reference image to guide the outlines and composition.",
+                control:
+                  "Upload an image of any supported size. It fits proportionally with padding to guide outlines and composition; this mode does not preserve a person’s identity.",
               }[mode]
             }
           </p>

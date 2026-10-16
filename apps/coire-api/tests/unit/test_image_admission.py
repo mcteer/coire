@@ -610,3 +610,41 @@ async def test_img2img_admission_retains_only_ready_owner_input_with_exact_dimen
     row.owner_user_id = uuid.uuid4()
     with pytest.raises(ImageValidationError, match="init image"):
         await admission._retain_generation_inputs(session, OWNER, spec)
+
+
+async def test_control_admission_accepts_reference_dimensions_independent_of_output() -> None:
+    reference = uuid.uuid4()
+    spec = ImageSpec(
+        model_id=MODEL,
+        mode=ImageMode.CONTROL,
+        prompt="A ceramic vase",
+        width=512,
+        height=512,
+        steps=4,
+        guidance=Decimal(0),
+        seed=1,
+        control=ImageControl(image_id=reference, model_id=uuid.uuid4()),
+    )
+    row = SimpleNamespace(
+        owner_user_id=OWNER,
+        purpose="control",
+        state="ready",
+        deleted_at=None,
+        normalized_key=str(reference),
+        normalized_sha256="a" * 64,
+        normalized_bytes=1024,
+        normalized_width=1200,
+        normalized_height=800,
+        active_references=0,
+    )
+
+    class InputSession:
+        async def get(self, *args: object, **kwargs: object) -> object:
+            return row
+
+    await admission._retain_generation_inputs(cast(AsyncSession, InputSession()), OWNER, spec)
+    assert row.active_references == 1
+    row.owner_user_id = uuid.uuid4()
+    with pytest.raises(ImageValidationError):
+        await admission._retain_generation_inputs(cast(AsyncSession, InputSession()), OWNER, spec)
+    assert row.active_references == 1

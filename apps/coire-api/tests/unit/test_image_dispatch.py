@@ -608,3 +608,43 @@ async def test_ready_record_requires_exact_held_worker(monkeypatch: pytest.Monke
     reservation.bytes = 2048
     with pytest.raises(ImageConflict, match="reservation changed"):
         await images._record_image_worker_ready(JOB, INSTANCE, 1024)
+
+
+async def test_control_dispatch_retains_actual_reference_size_and_ownership() -> None:
+    reference = uuid.uuid4()
+    owner = uuid.uuid4()
+    spec = ImageSpec(
+        model_id=MODEL,
+        mode=ImageMode.CONTROL,
+        prompt="A vase",
+        width=512,
+        height=512,
+        steps=4,
+        guidance=Decimal(0),
+        seed=7,
+        control=ImageControl(image_id=reference, model_id=uuid.uuid4()),
+    )
+    row = SimpleNamespace(
+        id=reference,
+        owner_user_id=owner,
+        purpose="control",
+        state="ready",
+        deleted_at=None,
+        active_references=1,
+        normalized_key=str(reference),
+        normalized_sha256="a" * 64,
+        normalized_bytes=1024,
+        normalized_width=1200,
+        normalized_height=800,
+    )
+
+    class InputSession:
+        async def get(self, *args: object, **kwargs: object) -> object:
+            return row
+
+    session = cast(AsyncSession, InputSession())
+    manifests = await image_dispatch._bound_inputs(session, owner, spec)
+    assert (manifests[0].width, manifests[0].height) == (1200, 800)
+    row.owner_user_id = uuid.uuid4()
+    with pytest.raises(ImageConflict):
+        await image_dispatch._bound_inputs(session, owner, spec)
