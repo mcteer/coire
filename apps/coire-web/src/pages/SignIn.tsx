@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Icon } from "../components/Icons";
+import { ColorThemePicker } from "../components/ColorThemePicker";
+import { CoireMark, Icon } from "../components/Icons";
 import { useTheme } from "../hooks/useTheme";
 import { api } from "../api/client";
 import type { components } from "../api/schema";
@@ -8,7 +9,8 @@ type Status = components["schemas"]["LocalAuthStatus"];
 type Session = components["schemas"]["LocalSessionIssued"];
 
 export function SignIn({ onSignedIn }: { onSignedIn: (user: Session["user"]) => void }) {
-  const { theme, toggleTheme } = useTheme();
+  const appearance = useTheme();
+  const { theme, toggleTheme } = appearance;
   const [status, setStatus] = useState<Status | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,10 +41,28 @@ export function SignIn({ onSignedIn }: { onSignedIn: (user: Session["user"]) => 
   };
   return (
     <main className="signin-page">
-      <header className="signin-site-header">
-        <a href="/">Coire</a>
-      </header>
+      <aside className="signin-story" aria-label="About Coire">
+        <div className="signin-brand">
+          <CoireMark size={36} />
+          <span>Coire</span>
+        </div>
+        <div>
+          <h2>
+            Your models.
+            <br />
+            <em>Your possibilities.</em>
+          </h2>
+          <p>
+            A considered space to think, create, and build with AI. Powered by the infrastructure
+            you control.
+          </p>
+        </div>
+        <footer>Intelligence, on your terms.</footer>
+      </aside>
       <section className="signin-form-region">
+        <div className="signin-color-themes">
+          <ColorThemePicker settings={appearance} />
+        </div>
         <button
           className="icon-button theme-toggle"
           type="button"
@@ -52,9 +72,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (user: Session["user"]) => 
           <Icon name={theme === "light" ? "moon" : "sun"} />
         </button>
         <div className="signin-card">
-          <a className="reference-trail" href="/">
-            ← Workspace
-          </a>
+          <div className="eyebrow">Welcome back</div>
           <h1>Sign in to Coire</h1>
           <p>Continue to your private workspace.</p>
           {error && (

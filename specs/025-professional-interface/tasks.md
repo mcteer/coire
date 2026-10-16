@@ -31,3 +31,10 @@ Dependencies: T001 → T002 → T003/T004 → T005/T006 → T007 → T008 → T0
 - [x] T017 Replace sidebar/card and marketing treatments with reference masthead, centered typography/spacing, open ruled sections and matching controls in both themes.
 - [x] T018 Inspect matching-viewport reference/Coire light/dark/mobile screenshots and verify measured style parity plus navigation/history access.
 - [x] T019 Pass web checks and image policy/scan/SBOM, activate only web, verify live WebKit and clean owned resources; update PR/evidence without asserting owner approval.
+
+## Owner decision: restore and add both preset/custom color themes
+- [x] T020 Restore the pre-literal sidebar layout live and in source, retaining explicit-image controls and API audit fix.
+- [x] T021 Add validated bounded browser-local palette preferences, Original/Ocean/Forest/Plum and contrast-derived tokens, with regressions.
+- [x] T022 Add accessible preset/custom editor with light/dark colors, preview/save/edit/cancel/delete/reset and integrate on sign-in/workspace; test lifecycle/storage boundaries.
+- [x] T023 Inspect and verify themes in actual headless Playwright WebKit on desktop/mobile, preserving layout and private drafts.
+- [x] T024 Pass scoped checks and hardened web image gates, deploy web only, verify live themes, update evidence/runbook/PR and retire fixtures.

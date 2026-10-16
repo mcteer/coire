@@ -536,7 +536,9 @@ textarea {
   color: var(--ink);
   accent-color: var(--accent);
 }
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(
+    [type="color"]
+  ),
 select,
 textarea {
   max-width: 100%;

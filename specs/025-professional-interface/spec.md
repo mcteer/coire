@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feat/025-professional-interface`
 **Created**: 2026-10-16
-**Status**: Literal-reference correction locally activated; owner visual acceptance not asserted
+**Status**: Sidebar restored; presets and custom color themes locally activated
 **Input**: Follow https://andreinita.co/learning/pydantic-ai/ and professional dashboard/chat references to significantly redesign the local interface.
 
 ## User Scenarios & Testing
@@ -76,3 +76,23 @@ operational tables may use the reference's wider1200px breakout, with the same h
 component system. Sign-in must share that structure rather than a split marketing screen.
 Compare matching-viewport screenshots and measured styles in headless Playwright WebKit.
 Passing functional tests or matching several colors does not establish visual acceptance.
+
+## Owner decision — restore sidebar and provide color themes
+The owner rejects the literal reference layout and requests the immediately preceding sidebar
+layout, with **both preset palettes and custom themes**. Restore the1f026b60 presentation,
+retain existing explicit image controls/audit fixes, and supersede the literal reference
+visual acceptance criteria. Theme changes affect colors only, never navigation, spacing,
+typography, data, privileges or generation settings.
+
+FR-008: Provide Original, Ocean, Forest and Plum presets and an accessible Color themes
+editor reachable from the workspace and sign-in. Each preset/custom theme has separate
+light/dark page, surface, sidebar and accent colors. Users can preview, name, save, edit,
+delete custom themes and reset to Original. Cancel/Escape discards unsaved previews and
+returns focus. Saved selection and at most12 custom themes persist in this browser across
+reload and sign-in; explicitly disclose browser-local persistence. Validate stored data and
+hex colors, handle unavailable storage without blocking work, and derive readable text
+colors automatically. Keep existing light/dark toggle and all functional safeguards.
+
+Acceptance: restore previous live layout first; verify native dialog keyboard access, preset
+persistence, custom create/edit/cancel/delete/reset, invalid/stale preference fallback,
+blocked storage, readable derived text and real desktop/mobile/dark WebKit screenshots.

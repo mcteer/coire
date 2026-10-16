@@ -17,6 +17,7 @@ export type IconName =
   | "arrow"
   | "plus"
   | "logout"
+  | "palette"
   | "chevron";
 const paths: Record<IconName, string> = {
   chat: "M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z",
@@ -39,6 +40,8 @@ const paths: Record<IconName, string> = {
   arrow: "M12 19V5m-6 6 6-6 6 6",
   plus: "M12 5v14M5 12h14",
   logout: "M9 21H4V3h5m5 5 4 4-4 4M8 12h13",
+  palette:
+    "M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7H18a3 3 0 0 0 3-3c0-5-4-9-9-9ZM7 10h.01M10 6.5h.01M15 6.5h.01M18 10h.01",
   chevron: "m9 5 7 7-7 7",
 };
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {

@@ -1,3 +1,63 @@
+# Feature025 — restored sidebar and color themes,2026-10-16
+
+The owner rejected the literal-reference layout, requested the preceding sidebar presentation,
+and explicitly chose **both presets and custom themes**. The current implementation supersedes
+the literal layout. Earlier execution records below are historical evidence only.
+
+## Restoration and current behavior
+- Immediately restored validated web135c7a20 to the existing TLS listener, then restored the
+  matching1f026b60 presentation in source. Removed the literal reference stylesheet.
+- Kept the installed API audit fix and existing explicit image controls/entitlement unchanged.
+- Added header/sign-in **Color themes** dialog: Original, Ocean, Forest and Plum presets;
+  up to12 named custom themes with separate light/dark page, panel, sidebar and accent colors.
+- Live preview, save, edit, cancel/Escape, delete and Reset colors. Reset retains saved customs.
+  Original clears only palette-owned CSS variables and restores the baseline styling exactly.
+- Only colors vary; typography, navigation, spacing, data and image settings stay fixed.
+- Versioned bounded browser-local JSON preference at `coire.color-themes.v1`; existing
+  `coire.theme` still handles appearance. Private drafts/credentials are never stored here.
+- Strict six-digit colors/names/IDs, bounded collection, malformed/stale-data fallback,
+  storage-blocked message without blocking navigation, no arbitrary CSS or remote assets.
+- Derived text/accent/button/sidebar/semantic label colors target4.5:1 against their surfaces;
+  incompatible page/panel combinations cannot save. Focus colors remain readable for accents
+  that blend into the background. No claim of exhaustive accessibility certification.
+
+## Validation
+- **283 web tests,66 files passed**, no skips. Added persistence/private-draft isolation,
+  custom lifecycle/cancel, malformed/oversized preferences, capacity/duplicate names, blocked
+  storage, incompatible colors, text contrast (all preset modes and difficult gray/white
+  cases), Original cleanup and keyboard-focus regressions.
+- Strict TypeScript/Vite build, ESLint, Prettier and whitespace checks passed; no dependency,
+  API contract, schema, database, backend or Studio change in this slice.
+- Actual headless Playwright **WebKit26/build2215**:27 scenarios in preview and deployed
+  interface, with screenshots inspected. No page overflow or page errors.
+- Preset choice persisted from sign-in to chat; custom light/dark colors survived reload;
+  edit/cancel restored saved values; deletion/reset restored Original; screenshot/geometry
+  checks confirmed the sidebar did not move across palettes.
+- Actual dialog Tab cycling, Escape/focus return and mobile editor scrolling were checked.
+  WebKit exposed a focus escape; explicit initial focus and deterministic Tab/Shift+Tab cycling
+  fixed it. No test was disabled or weakened. Native dialog preserves background inertness.
+- Actual owner navigation/admin/image access and logout/revoked-cookie replay passed.
+- Web hardened image policy passed, Trivy CRITICAL findings0 including unfixed, SPDX SBOM.
+
+## Activation
+Current web: `sha256:685016c7f861ae859386e60689e0b0343979c7b56938f73d270f26102e216a8d`.
+Rollback web: `sha256:135c7a20e711a95a3a6bb86efc501b89ce812972bdac7efa3e90ccfb359ce6e9`.
+Only web recreated with --no-deps. All14 other container identities/images preserved,
+including API73a0fd0 audit fix. HTTPS8443 retained; HTTPS200, HTTP browser308, machine health200.
+Private receipts/screenshots/SBOM/rollback: `~/.coire/qualification/025/palettes-*`.
+Owned loopback preview server/browser processes and visual dist fixtures retired; no persistent
+fixture container/volume, new key, model workload or entitlement mutation created in this slice.
+Theme test palettes were browser-context-only and removed before that context closed.
+
+## Constitution
+I/II/V: no engine/placement/acquisition path touched. II-a: existing hardened web only.
+III: no wire change; client preference types are local validated data. IV: no auth/scope/data
+mutation, credentials remain Keychain-backed. VI: existing web/service signals retained; no
+new backend path/telemetry destination. VII: amended spec/plan/tasks, meaningful tests and live
+WebKit acceptance; no tiny-model test applies to browser color preferences.
+
+## Historical records — superseded visual directions
+
 # Feature025 — literal reference correction,2026-10-16
 
 The owner rejected the previous two interpretations. This record describes the new correction;

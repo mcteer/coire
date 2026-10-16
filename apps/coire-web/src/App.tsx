@@ -25,7 +25,6 @@ import { TrainingActivity } from "./components/training/TrainingActivity";
 import { killAdminImageJob, listAdminImageJobs, type ImageActivityItem } from "./api/images";
 import { clearChatDrafts } from "./api/chatDrafts";
 import "./styles/app.css";
-import "./styles/reference.css";
 const gb = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GB`;
 function requestedChatTarget(hash: string): string | undefined {
   if (!hash.startsWith("#chat/target/")) return undefined;

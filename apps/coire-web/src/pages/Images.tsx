@@ -178,12 +178,8 @@ export function Images({
 
   return (
     <main className="grid image-page" aria-label="Images">
-      <div className="page-heading">
+      <section className="panel glass wide">
         <h1>Images</h1>
-        <p>Generate images with your local models.</p>
-      </div>
-      <section className="panel glass wide image-generation-panel">
-        <h2>Generate</h2>
         {models.length === 0 ? (
           <p>Generation is unavailable until an image model is published.</p>
         ) : (

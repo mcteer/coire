@@ -48,3 +48,16 @@ styles; preserve generated contracts and all explicit image controls/permissions
 meaningful system-theme and accessible-history behavior tests where behavior changes.
 Produce real headless WebKit comparisons and a measured style parity receipt; deploy web
 only after build/tests/lint/image checks, preserving the installed API audit fix.
+
+## Owner-approved replacement direction: sidebar plus color themes
+Restore code presentation from1f026b60 without undoing its explicit image/authorization work.
+Immediate live web rollback uses the already validated135c7a20 image and leaves API73a0fd0
+untouched. Implement local-only typed palette preferences and strict bounded validation;
+four built-in presets, light/dark color sets, derived contrast text and CSS-variable overrides.
+Original clears overrides so the restored theme is exact. Extend useTheme to own palette
+selection/preview/persistence; a native modal offers presets and custom editor with save,
+cancel, deletion and reset. Integrate in AppShell and SignIn, retaining the existing toggle.
+No API/wire shape, DB, dependency, entitlement, image setting, service or listener change.
+Meaningful pure color/validation and UI lifecycle regressions plus actual headless WebKit
+preview, persistence, cancel, edit/delete/reset and mobile inspection. Build/policy/scan/SBOM
+and deploy only web with rollback; record source/live restoration and clean fixtures.

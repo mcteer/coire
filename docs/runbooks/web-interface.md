@@ -92,3 +92,30 @@ For this correction replace **only web**. Retain the installed API audit fix and
 explicit entitlement. Use a new current-image/config snapshot; never apply a whole earlier
 rollback manifest that would unintentionally revert the API fix. Evidence under
 `~/.coire/qualification/025/literal-*` includes matching-viewport captures and measured parity.
+
+## Sidebar restoration and color themes (current)
+
+The owner reverted the literal-reference layout. Restore the1f026b60 sidebar presentation;
+`styles/reference.css` is removed. Palette controls now live beside the light/dark toggle on
+workspace and sign-in. Choose Original/Ocean/Forest/Plum, or Create custom theme to edit
+light/dark page, panel, sidebar and accent colors. Live preview is not saved until Save theme;
+Cancel/Escape discards it. Edit/delete apply to custom themes; Reset colors selects Original
+without deleting saved palettes. Preference names must be unique and1–40 characters.
+
+Themes are browser-local (`coire.color-themes.v1`,version1,maximum12 custom themes) and do
+not sync between devices/accounts. The existing `coire.theme` key still controls light/dark.
+If storage is blocked, colors continue to work for the current visit and the dialog explains
+that saving failed. To recover corrupt preferences, use Reset colors or remove only the
+color-theme key from this browser; do not clear all storage/private chat drafts.
+
+Validation includes hex-only input, compatible page/panel text contrast and bounded stored
+data. Foreground/semantic label colors are derived; no arbitrary CSS, remote resources,
+admin changes or backend contract are involved. Check preset persistence across sign-in
+and reload, custom save/edit/cancel/delete/reset, keyboard Tab/Shift+Tab/Escape and phone
+dialog scrolling in headless Playwright WebKit. Color choices must not move the sidebar or
+change existing controls/data. No model workload is required for these presentation changes.
+
+Only web is rebuilt/deployed; retain API audit-fix image73a0fd0 and existing explicit-image
+entitlement/controls. Snapshot current web/compose before --no-deps recreation. For rollback
+use web135c7a20 (the restored layout without palette editor), preserving the API image.
+Private current receipts/screenshots are under `~/.coire/qualification/025/palettes-*`.
