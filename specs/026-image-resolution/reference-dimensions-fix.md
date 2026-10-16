@@ -38,3 +38,13 @@ and submitted a 512×512 vase request with the existing qualified control model.
 `01M53AERRZ27GKX80DD2BRMGCY` completed successfully with four native generation steps.
 Desktop/mobile input screenshots were inspected. Private evidence is under
 `~/.coire/qualification/109/`; no user reference or output was accessed.
+
+The downloaded output decoded to 512×512, its registered SHA-256 matched, and embedded
+recipe input manifests still described the 1200×800 source. Real output dialogs passed
+WebKit desktop, mobile and short-viewport checks and screenshots were inspected. The
+owned output and history were deleted after acceptance; SQL confirmed output purge and
+zero remaining events. The owned source was also deleted (asynchronous input purge),
+and both installer-created temporary rendered plists were removed. Prior production
+node builds are deliberately retained as rollback targets, not test candidates.
+
+Review: https://github.com/mcteer/coire/pull/110, stacked on the image-workspace branch.
