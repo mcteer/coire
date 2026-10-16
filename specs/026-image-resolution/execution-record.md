@@ -83,3 +83,6 @@ Cleanup also removed the six unused task-created native candidate environments a
 checking they were neither current nor process-referenced, and stopped the owned local
 Vite preview. Current environments and the pre-change rollback baseline remain. The
 successful qualification row is terminal with reservation_cleanup_pending=false.
+
+Review: [PR108](https://github.com/mcteer/coire/pull/108), stacked on the existing
+chat-composer branch. All026 implementation and acceptance tasks are checked.

@@ -17,7 +17,7 @@
 ## Acceptance and release
 - [x] T009 Run owner authenticated 1980 square, portrait/landscape, metadata/reuse and cancellation qualification; retain evidence privately and clean outputs.
 - [x] T010 Inspect actual controls in headless WebKit desktop/mobile/light/dark; run web tests/build/lint and image policy/scan/SBOM, activate independently and verify.
-- [ ] T011 Update runbook/design/execution record, reconcile requirements, cleanup owned resources and open PR with constitution evidence.
+- [x] T011 Update runbook/design/execution record, reconcile requirements, cleanup owned resources and open PR with constitution evidence.
 
 Dependencies: T001 → T002 → T003 → T004/T005 → T006 → T009; T001 → T007/T008 → T010; all → T011.
 Independent read-only test discovery can run concurrently; no sub-agent delegation is used.
