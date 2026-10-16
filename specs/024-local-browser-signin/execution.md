@@ -1,8 +1,9 @@
 # Local sign-in execution — 2026-10-15
 
-Implementation and isolated acceptance pass. Production activation is pending operator approval
-for one additional HTTPS listener under the explicit AGENTS.md network rule. No new production
-listener, credential or schema has been activated. T009 remains open.
+Implementation and production browser acceptance pass. The owner explicitly approved
+activation on 8443 on 2026-10-16. API/web are healthy on the existing control address;
+HTTP browser pages redirect to HTTPS and the original HTTP machine routes remain available.
+T009 is complete. No system/client trust store was changed automatically.
 
 ## Validation
 
@@ -23,13 +24,36 @@ files had disappeared, so exact API/web runtime custody was reconstructed into d
 private prepared/rollback manifests and validated with Compose and nginx preflight.
 The existing installed-release pointer was not changed.
 
-Prepared HTTPS uses the existing control address on port 8443. Approval to widen network
-exposure is required by AGENTS.md: “Do not widen a CORS, network, capability, or firewall
-setting to make something work; ask.” The TLS overlay and runbook make that action reviewable.
-After approval: verify custody/backup, migrate, provision the existing admin password through
-a private pipe and Keychain, recreate only API/web, verify actual owner sign-in/reload/logout,
-install a durable release pointer compatible with the existing deployment custody, and record
-the actual public-certificate fingerprint and client trust instructions. Recheck original
-Studio HTTP traffic; preserve rollback and do not claim activation before these pass.
+## Activated 2026-10-16
+
+Owner approval: “Yes, please proceed with acitvation on 8443.” A fresh consistent backup
+was created before mutation. Schema 0035 was applied, only API/web were recreated, and
+the existing active admin received a local password stored in the operator's Keychain.
+The password was passed privately to the audited provisioning utility and never recorded
+in repository, CLI arguments, environment or execution logs.
+
+Actual production browser checks pass: HTTP browser entry redirects to HTTPS; sign-in
+returns the existing owner/admin identity; reload retains it; the admin API returns 200;
+the admin page receives a live cluster snapshot; Secure/HttpOnly/Strict cookie attributes
+and absence of secrets in browser storage are verified. Logout revokes the session and
+replay returns 401. No 5xx response occurred during the walkthrough. Original HTTP health
+returns 200 and native node probes/reconciliation remain healthy. All unrelated production
+container IDs remain unchanged. No temporary test container or volume remains.
+
+The durable targeted deployment/rollback manifests and public certificate are under
+`~/.coire/projects/coire/local-signin/current/`. This is deliberately a separate two-service
+pointer; it is not selected as the full control-plane release. The existing broader installed
+release pointer remains unchanged. Future full deployments must include the local TLS overlay.
+Private backup, custody and browser receipts remain under `~/.coire/qualification/024/`.
+
+All 35 hosted validation jobs passed for implementation commit `4c8af410`; publish was skipped
+as expected for a PR. The final browser-HTTP redirect correction additionally passes two
+security regression tests, strict script typing, Ruff, actual nginx configuration validation,
+HTTP redirect/API health checks and the repeated production browser walkthrough. The follow-up
+commit records activation and this correction; its hosted checks run independently.
+
+Client onboarding: trust the public host certificate on the browsing device, then use the
+existing account email and the Keychain-stored password. The operator may instead set a
+chosen password with the hidden-prompt provisioning command. Credentials stay private.
 
 Cloudflare rollout and 020 physical fault acceptance remain outside this feature.

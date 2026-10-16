@@ -31,8 +31,9 @@ activating this extra listener** (AGENTS.md network rule). It does not alter net
 capabilities, firewall rules or node URLs. Set the four path/origin variables emitted by the
 preparation tool, retain the current control bind address, and include the overlay in the
 normal installed Compose release. Replace only API/web with their validated image IDs. Check
-`nginx -t` against the generated configuration before activation. Plaintext port 8180 cannot
-accept a local password or session because its scheme differs from the configured HTTPS origin.
+`nginx -t` against the generated configuration before activation. Plaintext browser pages on port 8180 redirect to HTTPS before showing a password form.
+Machine API/health routes retain their HTTP behavior. The API also refuses local passwords
+and sessions on a scheme that differs from the configured HTTPS origin.
 
 Trust the generated **public certificate** on the client before entering a password. Verify
 its SHA-256 fingerprint against Core (`openssl x509 -in <certificate.pem> -noout -fingerprint
@@ -87,3 +88,17 @@ the installed Compose release if no longer needed; retain the original 8180 list
 configuration. Restore the prior API/web image IDs if required. Do not drop local auth tables
 until local sign-in is disabled and a verified backup exists. Do not delete mounted credential
 generations or add a network/firewall exception to diagnose a sign-in failure.
+
+
+## Activated local installation
+
+The owner approved HTTPS on 8443 on 2026-10-16. The targeted API/web deployment is recorded
+at `~/.coire/projects/coire/local-signin/current/compose.json`, with its exact rollback
+manifest beside it. Use `docker compose -p coire -f <that path> up -d --no-deps coire-api
+coire-web` for that targeted configuration. Do not select this two-service manifest as the
+full control-plane release; include `compose.local-tls.yaml` in any future full deployment.
+The public certificate is `coire-core.lab.pem` beside the manifest. The initial owner password
+is in login Keychain service `coire-local-browser-password`, account equal to the owner's
+existing email. Show it through Keychain Access on Core, or copy it privately to the clipboard
+with `security find-generic-password -a USER_EMAIL -s coire-local-browser-password -w | pbcopy`.
+A Keychain permission prompt is expected for a new reader. Never paste it into issue/PR logs.

@@ -12,6 +12,6 @@
 ## Finish
 - [x] T007 Add local TLS deployment support, provisioning command, runbook, dashboard panel and alert.
 - [x] T008 Run security contracts, regression, lint/type/OpenAPI/web checks and build/scan changed images.
-- [ ] T009 Deploy through documented local workflow, complete real browser sign-in/reload/logout acceptance and remove all owned test resources; record evidence.
+- [x] T009 Deploy through documented local workflow, complete real browser sign-in/reload/logout acceptance and remove all owned test resources; record evidence.
 
 Dependencies: T001 → T002 → T003 → T004 → T005/T006 → T007 → T008 → T009. Independent API and browser checks may run concurrently; no agent delegation required. Deliver a complete usable login before treating this feature as done.

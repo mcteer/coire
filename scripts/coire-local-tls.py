@@ -116,14 +116,8 @@ def prepare(directory: Path, hostname: str) -> dict[str, str]:
         # remains mode0700; no other host account can traverse it.
         path.chmod(0o444)
     source = (ROOT / "apps/coire-web/nginx/nginx.conf").read_text()
-    start = source.index("    server {")
-    plain = source[start : source.rfind("}")]
-    tls = plain.replace(
-        "listen 8080;",
-        "listen 8081 ssl;\n        ssl_certificate /run/secrets/local_tls_certificate;\n        ssl_certificate_key /run/secrets/local_tls_private_key;\n        ssl_protocols TLSv1.2 TLSv1.3;",
-    )
     config = generation / "nginx.conf"
-    config.write_text(source[: source.rfind("}")] + tls + "}\n")
+    config.write_text(configuration(source, hostname))
     config.chmod(0o444)
     return {
         "COIRE_LOCAL_TLS_CONFIG": str(config),
@@ -131,6 +125,23 @@ def prepare(directory: Path, hostname: str) -> dict[str, str]:
         "COIRE_LOCAL_TLS_PRIVATE_KEY": str(generation / "private-key.pem"),
         "COIRE_LOCAL_AUTH_ORIGIN": f"https://{hostname}:8443",
     }
+
+
+def configuration(source: str, hostname: str) -> str:
+    """Keep machine HTTP routes, redirect browser pages, and serve the SPA over TLS."""
+    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?", hostname):
+        raise ValueError("a DNS hostname is required")
+    start = source.index("    server {")
+    plain = source[start : source.rfind("}")]
+    tls = plain.replace(
+        "listen 8080;",
+        "listen 8081 ssl;\n        ssl_certificate /run/secrets/local_tls_certificate;\n        ssl_certificate_key /run/secrets/local_tls_private_key;\n        ssl_protocols TLSv1.2 TLSv1.3;",
+    )
+    browser = "try_files $uri $uri/ /index.html;"
+    if plain.count(browser) != 1:
+        raise ValueError("the browser location must be exact before enabling TLS")
+    plain = plain.replace(browser, f"return 308 https://{hostname}:8443$request_uri;")
+    return source[:start] + plain + tls + "}\n"
 
 
 def main() -> None:
