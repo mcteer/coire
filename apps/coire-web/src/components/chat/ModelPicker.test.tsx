@@ -70,3 +70,33 @@ test("switches from a Studio model to an attributed provider", () => {
   fireEvent.click(screen.getByRole("button", { name: /Remote model/ }));
   expect(onSelect).toHaveBeenCalledWith(remote.id);
 });
+
+test("compact picker attributes the selected provider and exposes real model choices", () => {
+  const onSelect = vi.fn();
+  const { container } = render(
+    <ModelPicker models={[model]} selectedId={model.id} onSelect={onSelect} compact />,
+  );
+  expect(screen.getByText("Helpful model · Studio")).toBeInTheDocument();
+  const disclosure = container.querySelector("details")!;
+  expect(disclosure.open).toBe(false);
+  fireEvent.click(disclosure.querySelector("summary")!);
+  expect(disclosure.open).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: /Helpful model/ }));
+  expect(onSelect).toHaveBeenCalledExactlyOnceWith(model.id);
+});
+
+test("compact menu closes on Escape or outside press and restores summary focus", () => {
+  const { container } = render(
+    <ModelPicker models={[model]} selectedId={model.id} onSelect={vi.fn()} compact />,
+  );
+  const disclosure = container.querySelector("details")!;
+  const summary = disclosure.querySelector("summary")!;
+  fireEvent.click(summary);
+  expect(disclosure.open).toBe(true);
+  fireEvent.keyDown(disclosure, { key: "Escape" });
+  expect(disclosure.open).toBe(false);
+  expect(summary).toHaveFocus();
+  fireEvent.click(summary);
+  fireEvent.pointerDown(document.body);
+  expect(disclosure.open).toBe(false);
+});

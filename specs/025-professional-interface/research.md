@@ -1,0 +1,9 @@
+# Design research
+
+Owner reference: https://andreinita.co/learning/pydantic-ai/ inspected in a real 1440px browser. Computed default body is ivory rgb(250,248,245), Inter text and Cormorant Garamond headings; the source defines navy surfaces and gold accents for its alternate theme. Carry over these visual qualities, not the blog layout or content.
+
+Professional structure: https://linear.app/now/how-we-redesigned-the-linear-ui emphasizes consistent sidebar/header alignment, reduced visual noise and clear content hierarchy; https://vercel.com/design provides restrained system/surface treatment. Chat research includes the official Vercel AI Chatbot repository and preview (https://github.com/vercel/ai-chatbot); the old chat.vercel.ai demo returned DEPLOYMENT_NOT_FOUND, so it is not claimed as a live app walkthrough. Existing ChatGPT/Claude conversation conventions also inform: persistent history, centered readable content and stable composer. These inform layout rather than copied assets.
+
+Fonts: Google Fonts Inter and Cormorant Garamond are licensed SIL OFL1.1, confirmed at https://github.com/google/fonts/blob/main/ofl/inter/OFL.txt and https://github.com/google/fonts/blob/main/ofl/cormorantgaramond/OFL.txt. Bundle unmodified Latin WOFF2 assets, full notices and source/hash inventory. No runtime font/CDN requests.
+
+Decisions: default light reference theme; explicit persisted dark mode; navy navigation shell; gold limited to active/primary affordances; serif only for editorial page/empty-state headings, sans-serif for forms/data. Keep existing truthful data and permission controls. Historical Glass mockups are superseded by feature025 and updated canonical design documentation. Mobile drawer restores toggle focus and closes with Escape or navigation. Theme failures never block authentication.

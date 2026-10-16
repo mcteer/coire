@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { chatPickerSupportsExactSelection, type ChatPickerEntry } from "../../api/chat";
 
 function contextLabel(value: number | null | undefined): string {
@@ -10,12 +11,28 @@ export function ModelPicker({
   selectedId,
   onSelect,
   disabled = false,
+  compact = false,
 }: {
   models: ChatPickerEntry[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   disabled?: boolean;
+  compact?: boolean;
 }) {
+  const menu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (!compact) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (
+        menu.current?.open &&
+        event.target instanceof Node &&
+        !menu.current.contains(event.target)
+      )
+        menu.current.open = false;
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [compact]);
   if (models.length === 0)
     return (
       <p className="empty">
@@ -27,7 +44,7 @@ export function ModelPicker({
     const group = model.tags?.[0] ?? "general";
     groups.set(group, [...(groups.get(group) ?? []), model]);
   }
-  return (
+  const content = (
     <section className="chat-picker" aria-label="Choose a model">
       {[...groups].map(([group, entries]) => (
         <div key={group}>
@@ -40,10 +57,21 @@ export function ModelPicker({
                 className={"chat-model glass " + (selectedId === model.id ? "selected" : "")}
                 aria-pressed={selectedId === model.id}
                 disabled={disabled || !chatPickerSupportsExactSelection(model)}
-                onClick={() => onSelect(model.id)}
+                onClick={() => {
+                  onSelect(model.id);
+                  if (compact && menu.current) {
+                    menu.current.open = false;
+                    menu.current.querySelector("summary")?.focus();
+                  }
+                }}
               >
                 <strong>{model.display_name}</strong>
-                {model.target?.adapter_id && <small className="mono">Exact adapter · {model.target.variant_id} · {model.verified ? "independently verified" : "unverified — no write tasks"}</small>}
+                {model.target?.adapter_id && (
+                  <small className="mono">
+                    Exact adapter · {model.target.variant_id} ·{" "}
+                    {model.verified ? "independently verified" : "unverified — no write tasks"}
+                  </small>
+                )}
                 <small>
                   {model.source === "studio"
                     ? "Studio"
@@ -75,5 +103,34 @@ export function ModelPicker({
         </div>
       ))}
     </section>
+  );
+  if (!compact) return content;
+  const selected = models.find((model) => model.id === selectedId);
+  return (
+    <details
+      ref={menu}
+      className="chat-model-menu"
+      open={!selectedId}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && menu.current?.open) {
+          event.preventDefault();
+          menu.current.open = false;
+          menu.current.querySelector("summary")?.focus();
+        }
+      }}
+    >
+      <summary>
+        <span className="model-menu-label">Model</span>
+        <strong>
+          {selected
+            ? `${selected.display_name} · ${selected.source === "studio" ? "Studio" : selected.source === "openai" ? "OpenAI" : "Anthropic"}`
+            : "Choose a model"}
+        </strong>
+        <span className="model-menu-chevron" aria-hidden="true">
+          ⌄
+        </span>
+      </summary>
+      {content}
+    </details>
   );
 }
