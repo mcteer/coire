@@ -17,6 +17,8 @@ export type IconName =
   | "arrow"
   | "plus"
   | "logout"
+  | "thumb-up"
+  | "thumb-down"
   | "palette"
   | "chevron";
 const paths: Record<IconName, string> = {
@@ -40,6 +42,8 @@ const paths: Record<IconName, string> = {
   arrow: "M12 19V5m-6 6 6-6 6 6",
   plus: "M12 5v14M5 12h14",
   logout: "M9 21H4V3h5m5 5 4 4-4 4M8 12h13",
+  "thumb-up": "M7 10v11H3V10h4Zm0 0 5-8h1a2 2 0 0 1 2 2l-1 6h5a2 2 0 0 1 2 2l-2 7a2 2 0 0 1-2 2H7",
+  "thumb-down": "M7 14V3H3v11h4Zm0 0 5 8h1a2 2 0 0 0 2-2l-1-6h5a2 2 0 0 0 2-2l-2-7a2 2 0 0 0-2-2H7",
   palette:
     "M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7H18a3 3 0 0 0 3-3c0-5-4-9-9-9ZM7 10h.01M10 6.5h.01M15 6.5h.01M18 10h.01",
   chevron: "m9 5 7 7-7 7",

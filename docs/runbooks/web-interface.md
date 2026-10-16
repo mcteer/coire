@@ -135,3 +135,24 @@ This uses the existing authenticated image SSE/API contracts and observability. 
 percentage, queue position or completion time is invented. There is no engine or API
 change. Roll back by restoring the previous web image in the installed compose manifest
 and recreating only `coire-web` with `--no-deps`; preserve the API and all data volumes.
+
+### Populated and interrupted states (issue #105)
+
+Image cards reserve enough width for whole action labels and fit their content.
+Reuse settings and Download stay visible; More actions discloses regeneration,
+new-seed generation and confirmed deletion. Generation history is collapsed by
+default, shows five spaced job summaries when opened, and offers Show older jobs.
+The generator and history use the page scroll rather than nested scroll panels.
+
+An empty assistant response renders no blank bubble or answer-feedback form. A
+failed/interrupted turn without answer text says No answer received; a partial answer
+says Response interrupted and retains its continuation control. Completed answers
+have compact, labelled rating buttons; optional feedback tags are a disclosure.
+These changes affect presentation only. They do not change stored answers, retry
+semantics, feedback capture preferences, authorization or engine failure behavior.
+
+Visual acceptance must inspect populated cards, expanded actions/history, empty and
+partial interrupted turns, and a completed answer with feedback and a code block.
+Use headless Playwright WebKit in both appearances across desktop and mobile; check
+word wrapping, element bounds/overlaps and nested scroll regions as well as page
+overflow. Screenshot fixtures must be labelled separately from live API evidence.

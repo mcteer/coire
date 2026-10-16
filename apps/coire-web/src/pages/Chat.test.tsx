@@ -1283,9 +1283,15 @@ test("explicit retry keeps the partial answer and does not duplicate the user in
           },
         }) +
           event(4, {
+            type: "message.delta",
+            message_id: answerId,
+            channel: "answer",
+            text: "Recovered answer",
+          }) +
+          event(5, {
             type: "turn.terminal",
             state: "completed",
-            answer_length: 0,
+            answer_length: 16,
             reasoning_length: 0,
           }),
       ),
@@ -1383,9 +1389,15 @@ test("explicit continuation keeps the partial answer and creates a separate inpu
           },
         }) +
           event(4, {
+            type: "message.delta",
+            message_id: answerId,
+            channel: "answer",
+            text: "Recovered answer",
+          }) +
+          event(5, {
             type: "turn.terminal",
             state: "completed",
-            answer_length: 0,
+            answer_length: 16,
             reasoning_length: 0,
           }),
       ),

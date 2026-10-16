@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "../Icons";
 import { ApiError } from "../../api/client";
 import {
   createComparison,
@@ -104,40 +105,48 @@ export function FeedbackControls({
     <div className="chat-feedback-controls" role="group" aria-label="Answer feedback">
       <button
         type="button"
-        className="button"
+        className="button feedback-vote"
+        aria-label="Helpful answer"
+        title="Helpful answer"
         aria-pressed={current?.judgement === "up"}
         disabled={disabled}
         onClick={() => void vote("up")}
       >
-        Helpful answer
+        <Icon name="thumb-up" size={16} />
       </button>
       <button
         type="button"
-        className="button"
+        className="button feedback-vote"
+        aria-label="Unhelpful answer"
+        title="Unhelpful answer"
         aria-pressed={current?.judgement === "down"}
         disabled={disabled}
         onClick={() => void vote("down")}
       >
-        Unhelpful answer
+        <Icon name="thumb-down" size={16} />
       </button>
-      <label>
-        Feedback tags
-        <input
-          value={tags}
-          maxLength={544}
-          disabled={disabled}
-          placeholder="clear, accurate"
-          onChange={(event) => setTags(event.target.value)}
-        />
-      </label>
       <button
         type="button"
         className="button"
+        aria-label="Compare another answer"
         disabled={disabled || pending || row.eligibility !== "eligible"}
         onClick={() => void compare()}
       >
-        Compare another answer
+        Compare
       </button>
+      <details className="feedback-options">
+        <summary>Feedback tags</summary>{" "}
+        <label>
+          Optional tags
+          <input
+            value={tags}
+            maxLength={544}
+            disabled={disabled}
+            placeholder="clear, accurate"
+            onChange={(event) => setTags(event.target.value)}
+          />
+        </label>
+      </details>
       <span role="status" aria-live="polite">
         {busy
           ? "Saving feedback…"

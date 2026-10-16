@@ -1008,3 +1008,106 @@
 .chat-attachments > summary {
   font-size: 12px;
 }
+
+/* Secondary answer actions should never compete with the answer itself. */
+.chat-feedback-controls {
+  gap: 8px;
+  margin-top: 16px;
+}
+.chat-feedback-controls .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.chat-feedback-controls .feedback-vote {
+  width: 34px;
+  padding: 8px;
+}
+.chat-feedback-controls .button:hover:not(:disabled),
+.chat-feedback-controls .button[aria-pressed="true"] {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-color: var(--border);
+}
+.feedback-options {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.feedback-options > summary {
+  cursor: pointer;
+  padding: 6px;
+}
+.feedback-options label {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0;
+}
+.feedback-options input {
+  max-width: 100%;
+  width: 200px;
+}
+.chat-feedback-controls > [role="status"]:empty {
+  display: none;
+}
+.chat-feedback-controls > [role="status"],
+.chat-feedback-controls > [role="alert"] {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+.chat-retry {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-ink);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+.chat-retry strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.chat-retry p {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 4px;
+}
+.chat-retry .button {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.chat-code-block > .button {
+  background: transparent;
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+  box-shadow: none;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+.chat-retry > div:first-child {
+  flex: 1 1 320px;
+}
+.chat-retry-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chat-retry-actions .button:first-child:not(:last-child) {
+  color: var(--ink-2);
+  background: var(--surface);
+  border-color: var(--border);
+}
+@media (max-width: 600px) {
+  .chat-retry-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

@@ -299,7 +299,11 @@ function ChatSession({
             feedback={(message) => {
               const row = feedback?.items?.find((item) => item.message_id === message.id);
               const turn = chat.turns.find((item) => item.assistant_message_id === message.id);
-              return row && cid ? (
+              return row &&
+                cid &&
+                message.text.trim() &&
+                (!turn || turn.state === "completed") &&
+                preference?.enabled ? (
                 <FeedbackControls
                   conversationId={cid}
                   revision={chat.conversation!.revision}
@@ -335,25 +339,35 @@ function ChatSession({
           )}
           {chat.retryableTurn && (
             <div className="chat-retry glass">
-              <p>The last response ended early. Its partial text remains above.</p>
-              <button
-                className="button"
-                type="button"
-                disabled={!chat.selectedId || chat.active || chat.fileBusy}
-                onClick={() => void chat.retry()}
-              >
-                Retry response
-              </button>
-              {chat.canContinue && (
+              <div>
+                <strong>{chat.canContinue ? "Response interrupted" : "No answer received"}</strong>
+                <p>
+                  {chat.canContinue
+                    ? "The partial answer is saved above. You can continue it or try again."
+                    : "The response ended before an answer was received. Try again."}
+                </p>
+              </div>
+              <div className="chat-retry-actions">
                 <button
                   className="button"
                   type="button"
                   disabled={!chat.selectedId || chat.active || chat.fileBusy}
-                  onClick={() => void chat.continueResponse()}
+                  onClick={() => void chat.retry()}
                 >
-                  Continue from partial answer
+                  Retry response
                 </button>
-              )}
+                {chat.canContinue && (
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={!chat.selectedId || chat.active || chat.fileBusy}
+                    onClick={() => void chat.continueResponse()}
+                    aria-label="Continue from partial answer"
+                  >
+                    Continue answer
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {chat.mode === "code" && (

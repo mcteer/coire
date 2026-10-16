@@ -23,6 +23,8 @@ export function Message({
   attachments?: ChatAttachment[];
   children?: ReactNode;
 }) {
+  if (message.role === "assistant" && !message.text.trim() && !message.reasoning?.trim())
+    return null;
   return (
     <article className={"chat-message " + message.role}>
       <div className="chat-message-label">
