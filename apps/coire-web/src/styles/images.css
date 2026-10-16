@@ -256,16 +256,110 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  .image-gallery {
-    --surface: #222938;
-    --surface-2: #2a3243;
-    --border: #424b5e;
-    --ink: #f5f6fa;
-    --ink-2: #d6dae6;
-    --ink-3: #abb3c4;
-    color: var(--ink);
-    background: var(--surface);
-    border-color: var(--border);
+/* A creative workbench: controls and library share the available desktop canvas. */
+@media (min-width: 1251px) {
+  .grid.image-page {
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    align-items: start;
   }
+  .grid.image-page > section:first-child {
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    position: sticky;
+    top: 88px;
+    max-height: calc(100dvh - 116px);
+    overflow: auto;
+  }
+  .grid.image-page > .image-gallery {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .grid.image-page > [aria-label="Image jobs"] {
+    grid-column: 2;
+    grid-row: 2;
+    max-height: 300px;
+    overflow: auto;
+  }
+  .grid.image-page > [aria-label="Image presets"] {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+  .grid.image-page > .image-timeline {
+    grid-column: 2;
+  }
+  .image-gallery-grid {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  }
+}
+.image-gallery-card {
+  box-shadow: none;
+}
+.image-gallery-card-body {
+  font-size: 11px;
+}
+.image-gallery .button {
+  padding: 7px 10px;
+  font-size: 10px;
+}
+.image-gallery-header {
+  align-items: start;
+  flex-wrap: wrap;
+}
+
+.image-gallery-actions .button:not(.danger) {
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.image-content-policy {
+  padding: 16px 0;
+  border-block: 1px solid var(--border);
+}
+.image-content-policy p {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.image-generation-form fieldset {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+}
+.image-generation-form fieldset legend {
+  padding: 0 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.image-gallery-card-body,
+.image-gallery .button,
+.image-gallery-card time {
+  font-size: 12px;
+}
+.image-settings-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.image-generation-form select,
+.image-preset-form select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238a6830' stroke-width='1.5'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  min-height: 42px;
+}
+.image-generation-form > button[type="submit"] {
+  min-height: 44px;
+}
+.image-generation-form aside {
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.image-settings-grid > fieldset,
+.image-settings-grid > label:has(textarea) {
+  grid-column: 1 / -1;
 }

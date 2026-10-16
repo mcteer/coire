@@ -107,12 +107,14 @@ test("names missing source and mask fields before fill submission", async () => 
   const onSubmit = vi.fn(async () => {});
   render(
     <ImageForm
-      models={[
-        {
-          ...models[0],
-          capability: { ...models[0].capability, modes: ["fill"] },
-        },
-      ] as ImageModelList["items"]}
+      models={
+        [
+          {
+            ...models[0],
+            capability: { ...models[0].capability, modes: ["fill"] },
+          },
+        ] as ImageModelList["items"]
+      }
       presets={[]}
       disabled={false}
       onSubmit={onSubmit}
@@ -188,13 +190,15 @@ test("selected LoRAs keep their order and exact scale strings", async () => {
   ];
   render(
     <ImageForm
-      models={[
-        {
-          ...models[0],
-          capability: { ...models[0].capability, modes: ["txt2img"], max_loras: 2 },
-          loras: adapters,
-        },
-      ] as ImageModelList["items"]}
+      models={
+        [
+          {
+            ...models[0],
+            capability: { ...models[0].capability, modes: ["txt2img"], max_loras: 2 },
+            loras: adapters,
+          },
+        ] as ImageModelList["items"]
+      }
       presets={[]}
       disabled={false}
       onSubmit={onSubmit}
@@ -224,13 +228,15 @@ test("restored adapter refuses submission when it is no longer listed", async ()
   const onSubmit = vi.fn(async () => {});
   render(
     <ImageForm
-      models={[
-        {
-          ...models[0],
-          capability: { ...models[0].capability, max_loras: 1 },
-          loras: [],
-        },
-      ] as ImageModelList["items"]}
+      models={
+        [
+          {
+            ...models[0],
+            capability: { ...models[0].capability, max_loras: 1 },
+            loras: [],
+          },
+        ] as ImageModelList["items"]
+      }
       presets={[]}
       disabled={false}
       onSubmit={onSubmit}
@@ -263,13 +269,15 @@ test("selected upscale asset and factor are submitted together", async () => {
   const upscaleId = "00000000-0000-0000-0000-000000000103";
   render(
     <ImageForm
-      models={[
-        {
-          ...models[0],
-          capability: { ...models[0].capability, modes: ["txt2img"] },
-          upscalers: [{ id: upscaleId, display_name: "SeedVR2" }],
-        },
-      ] as ImageModelList["items"]}
+      models={
+        [
+          {
+            ...models[0],
+            capability: { ...models[0].capability, modes: ["txt2img"] },
+            upscalers: [{ id: upscaleId, display_name: "SeedVR2" }],
+          },
+        ] as ImageModelList["items"]
+      }
       presets={[]}
       disabled={false}
       onSubmit={onSubmit}
@@ -296,13 +304,15 @@ test("restored Canny control keeps source and editable thresholds", async () => 
   const controlId = "00000000-0000-0000-0000-000000000104";
   render(
     <ImageForm
-      models={[
-        {
-          ...models[0],
-          capability: { ...models[0].capability, modes: ["control"], max_loras: 0 },
-          controls: [{ id: controlId, display_name: "Union Canny" }],
-        },
-      ] as ImageModelList["items"]}
+      models={
+        [
+          {
+            ...models[0],
+            capability: { ...models[0].capability, modes: ["control"], max_loras: 0 },
+            controls: [{ id: controlId, display_name: "Union Canny" }],
+          },
+        ] as ImageModelList["items"]
+      }
       presets={[]}
       disabled={false}
       onSubmit={onSubmit}
@@ -325,7 +335,9 @@ test("restored Canny control keeps source and editable thresholds", async () => 
       }}
     />,
   );
-  await waitFor(() => expect(screen.getByRole("combobox", { name: "Control model" })).toHaveValue(controlId));
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "Control model" })).toHaveValue(controlId),
+  );
   fireEvent.change(screen.getByRole("spinbutton", { name: "Canny high threshold" }), {
     target: { value: "97" },
   });
@@ -339,4 +351,128 @@ test("restored Canny control keeps source and editable thresholds", async () => 
     low_threshold: 23,
     high_threshold: 97,
   });
+});
+
+test("entitled direct generation sends explicit mode for anatomy without altering the prompt", async () => {
+  const onSubmit = vi.fn(async () => {});
+  render(
+    <ImageForm
+      models={models}
+      presets={[]}
+      disabled={false}
+      canGenerateExplicit
+      onSubmit={onSubmit}
+      reuse={{
+        request: {
+          schema_version: 1,
+          model_id: modelId,
+          mode: "img2img",
+          prompt: "Adult anatomical figure study",
+          init_image_id: inputId,
+          strength: "0.5",
+        },
+        revision: 1,
+      }}
+    />,
+  );
+  fireEvent.change(await screen.findByRole("combobox", { name: "Image content mode" }), {
+    target: { value: "explicit" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content_mode: "explicit",
+        prompt: "Adult anatomical figure study",
+      }),
+    ),
+  );
+});
+
+test("restored explicit recipes cannot submit without the current entitlement", async () => {
+  const onSubmit = vi.fn(async () => {});
+  render(
+    <ImageForm
+      models={models}
+      presets={[]}
+      disabled={false}
+      onSubmit={onSubmit}
+      reuse={{
+        request: {
+          schema_version: 1,
+          model_id: modelId,
+          mode: "img2img",
+          prompt: "Adult anatomy",
+          content_mode: "explicit",
+          init_image_id: inputId,
+          strength: "0.5",
+        },
+        revision: 1,
+      }}
+    />,
+  );
+  expect(
+    await screen.findByText("Explicit image access is required for these settings."),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "Image content mode" })).toHaveValue("explicit");
+  expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test("explicit preset policy stays explicit and cannot be downgraded in the form", async () => {
+  const onSubmit = vi.fn(async () => {});
+  const preset = {
+    id: inputId,
+    revision: 1,
+    name: "Anatomy study",
+    prompt_prefix: "",
+    retired: false,
+    defaults: { schema_version: 1 as const, model_id: modelId, content_mode: "explicit" as const },
+  };
+  render(
+    <ImageForm
+      models={models}
+      presets={[preset]}
+      disabled={false}
+      canGenerateExplicit
+      onSubmit={onSubmit}
+    />,
+  );
+  fireEvent.click(screen.getByRole("option", { name: "Anatomy study" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Image prompt" }), {
+    target: { value: "Adult anatomical study" },
+  });
+  expect(screen.getByRole("combobox", { name: "Image content mode" })).toBeDisabled();
+  expect(screen.getByRole("combobox", { name: "Image content mode" })).toHaveValue("explicit");
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ preset_id: inputId, content_mode: "explicit" }),
+    ),
+  );
+});
+
+test("fresh direct image requests carry the selected explicit mode", async () => {
+  const onSubmit = vi.fn(async () => {});
+  render(
+    <ImageForm
+      models={[{ ...models[0], capability: { ...models[0].capability, modes: ["txt2img"] } }]}
+      presets={[]}
+      disabled={false}
+      canGenerateExplicit
+      onSubmit={onSubmit}
+    />,
+  );
+  fireEvent.change(screen.getByRole("textbox", { name: "Image prompt" }), {
+    target: { value: "Nonsexual adult anatomical study" },
+  });
+  fireEvent.change(screen.getByRole("combobox", { name: "Image content mode" }), {
+    target: { value: "explicit" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ content_mode: "explicit", mode: "txt2img", model_id: modelId }),
+    ),
+  );
 });

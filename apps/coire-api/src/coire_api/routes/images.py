@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from coire_api.db import session_scope
 from coire_api.deps import SessionDep
 from coire_api.images import admission, cancellation, catalog, events, jobs, presets
-from coire_api.images.authorization import CurrentImageUser
+from coire_api.images.authorization import CurrentImageUser, audit_image_refusal
 from coire_api.images.telemetry import (
     ImageOperation,
     ImageOutcome,
@@ -129,6 +129,15 @@ async def submit_image_job(
                 session, principal, body, idempotency_key, settings
             )
         except ImageForbidden:
+            # Release admission locks before the independent refusal-audit transaction.
+            # The rejected job and its provisional quota changes must never commit.
+            await session.rollback()
+            await audit_image_refusal(
+                principal,
+                action="image.refused",
+                target_type="route",
+                target_id="POST /api/v1/images",
+            )
             record_image_request(
                 ImageOperation.SUBMIT, ImageOutcome.REFUSED, reason=ImageReason.AUTH
             )

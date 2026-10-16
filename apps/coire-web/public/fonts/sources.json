@@ -1,0 +1,20 @@
+[
+  {
+    "family": "Inter",
+    "file": "inter-latin.woff2",
+    "url": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+    "css_source": "https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap",
+    "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62",
+    "licence": "SIL Open Font License 1.1",
+    "licence_source": "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/OFL.txt"
+  },
+  {
+    "family": "Cormorant Garamond",
+    "file": "cormorant-garamond-latin.woff2",
+    "url": "https://fonts.gstatic.com/s/cormorantgaramond/v21/co3bmX5slCNuHLi8bLeY9MK7whWMhyjYqXtK.woff2",
+    "css_source": "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300..700&display=swap",
+    "sha256": "d80df8ff5aecd299a61549f9e29ab1ed0b9b05f4ea71d50fe978e07d5240b235",
+    "licence": "SIL Open Font License 1.1",
+    "licence_source": "https://raw.githubusercontent.com/google/fonts/main/ofl/cormorantgaramond/OFL.txt"
+  }
+]

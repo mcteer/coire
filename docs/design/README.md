@@ -1,9 +1,8 @@
-# docs/design
+# Coire interface design
 
-Design handoff for `apps/coire-web`.
+[DESIGN.md](DESIGN.md) and [tokens.css](tokens.css) describe the current professional workspace
+introduced in [feature 025](../../specs/025-professional-interface/spec.md).
 
-- `DESIGN.md` — the specification: principles, shell, surfaces, type, components, per-page anatomy, interaction and accessibility rules. Read this first.
-- `tokens.css` — every colour, radius, shadow, size, and spacing value as CSS custom properties. Import at the app root; components consume only these.
-- `mockups/` — five static 1440×900 HTML pages (`chat`, `training`, `images`, `settings`, `admin`). Open in a browser. Sample data only; measurements are authoritative.
-
-Behavioural questions (what a picker lists, when a model warms, what an admin may do) are answered by `docs/ARCHITECTURE.md` and the constitution, not here.
+The files in `mockups/` are retained as historical Glass-era references. They are superseded
+and do not override the current design or the owner's ivory/navy/gold direction. Screenshots
+of the current implementation are private qualification artifacts, not sample production data.

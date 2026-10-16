@@ -23,7 +23,13 @@ import { ImageTimeline } from "../components/images/ImageTimeline";
 import { PresetEditor } from "../components/images/PresetEditor";
 import { isTerminalImageState, useImageJob } from "../hooks/useImageJob";
 
-export function Images({ canEditPresets = false }: { canEditPresets?: boolean }) {
+export function Images({
+  canEditPresets = false,
+  canGenerateExplicit = false,
+}: {
+  canEditPresets?: boolean;
+  canGenerateExplicit?: boolean;
+}) {
   const [jobs, setJobs] = useState<ImageJob[]>([]);
   const [outputs, setOutputs] = useState<ImageOutput[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -180,6 +186,7 @@ export function Images({ canEditPresets = false }: { canEditPresets?: boolean })
           <ImageForm
             models={models}
             limits={limits}
+            canGenerateExplicit={canGenerateExplicit}
             presets={presets}
             disabled={submitting}
             onSubmit={generate}

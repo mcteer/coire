@@ -1,3 +1,4 @@
+import { Icon } from "../Icons";
 import type { FormEvent } from "react";
 
 export function Composer({
@@ -27,7 +28,7 @@ export function Composer({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={mode === "code" ? "Describe the repository task" : "Ask a question"}
-        rows={4}
+        rows={3}
         maxLength={64 * 1024}
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -38,10 +39,10 @@ export function Composer({
       />
       <div className="chat-composer-bottom">
         <span role="status" aria-label="Response status" aria-live="polite">
-          {status}
+          {status || "Enter to send · Shift + Enter for a new line"}
         </span>
         <button className="button" type="submit" disabled={disabled || !value.trim()}>
-          Send
+          Send <Icon name="arrow" size={16} />
         </button>
       </div>
     </form>

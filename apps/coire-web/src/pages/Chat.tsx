@@ -179,7 +179,7 @@ function ChatSession({
       <div className="chat-topline">
         <div>
           <h1>Chat</h1>
-          <p className="muted">Choose a model and send a message or repository task.</p>
+          <p className="muted">A space for questions, ideas, and the work ahead.</p>
         </div>
         <div className="row">
           {isAdmin && (
@@ -197,15 +197,18 @@ function ChatSession({
           </button>
         </div>
       </div>
-      <FeedbackSettings
-        refreshKey={`${cid ?? ""}:${chat.comparisons.filter((row) => row.selection_state === "withdrawn").length}`}
-        onChange={(value) => {
-          setPreference(value);
-          if (!value.enabled) setFeedback(null);
-          if (preference && preference.capture_generation !== value.capture_generation)
-            void chat.refreshFeedback().catch(() => {});
-        }}
-      />
+      <details className="chat-privacy-disclosure">
+        <summary>Feedback &amp; privacy</summary>
+        <FeedbackSettings
+          refreshKey={`${cid ?? ""}:${chat.comparisons.filter((row) => row.selection_state === "withdrawn").length}`}
+          onChange={(value) => {
+            setPreference(value);
+            if (!value.enabled) setFeedback(null);
+            if (preference && preference.capture_generation !== value.capture_generation)
+              void chat.refreshFeedback().catch(() => {});
+          }}
+        />
+      </details>
       <div className="chat-layout">
         <ConversationHistory
           conversations={chat.history}
@@ -256,6 +259,7 @@ function ChatSession({
             <p>Loading available models…</p>
           ) : (
             <ModelPicker
+              compact
               models={chat.models}
               selectedId={chat.selectedId}
               onSelect={chat.setSelectedId}
@@ -286,6 +290,10 @@ function ChatSession({
           )}
           {feedbackError && <p role="alert">{feedbackError}</p>}
           <MessageList
+            onPromptSelect={(prompt) => {
+              chat.setDraft(prompt);
+              document.getElementById("chat-input")?.focus();
+            }}
             messages={chat.messages}
             attachments={chat.attachments}
             feedback={(message) => {
@@ -368,22 +376,28 @@ function ChatSession({
             />
           )}
           {(chat.mode === "chat" || chat.mode === "code") && (
-            <AttachmentList
-              conversationId={chat.conversation?.id ?? null}
-              attachments={chat.attachments}
-              selections={chat.selections}
-              busy={
-                !chat.selectedId ||
-                chat.active ||
-                chat.fileBusy ||
-                Boolean(chat.conversation?.active_turn_id)
-              }
-              onUpload={(file) => void chat.uploadFile(file)}
-              onProcess={(fileId, operation, pages) =>
-                void chat.processFile(fileId, operation, pages)
-              }
-              onSelect={chat.selectFile}
-            />
+            <details
+              className="chat-attachments"
+              open={chat.attachments.length > 0 || chat.selections.length > 0}
+            >
+              <summary>Attach files</summary>
+              <AttachmentList
+                conversationId={chat.conversation?.id ?? null}
+                attachments={chat.attachments}
+                selections={chat.selections}
+                busy={
+                  !chat.selectedId ||
+                  chat.active ||
+                  chat.fileBusy ||
+                  Boolean(chat.conversation?.active_turn_id)
+                }
+                onUpload={(file) => void chat.uploadFile(file)}
+                onProcess={(fileId, operation, pages) =>
+                  void chat.processFile(fileId, operation, pages)
+                }
+                onSelect={chat.selectFile}
+              />
+            </details>
           )}
           {chat.selections.length > 0 && !chat.canSendSelections && (
             <div className="chat-selection-remedy" role="status">

@@ -36,12 +36,45 @@ function requestedChatTarget(hash: string): string | undefined {
   }
 }
 export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
+  const activeInstances = snapshot.cluster.instances.filter(
+    (instance) => !["stopped", "failed"].includes(instance.state),
+  );
   return (
-    <main className="grid">
+    <main className="grid overview-page">
+      <div className="page-heading">
+        <div>
+          <div className="eyebrow">Your infrastructure</div>
+          <h1>Workspace overview</h1>
+          <p>A live view of your compute, capacity, and activity.</p>
+        </div>
+        <span className="chip">Live overview</span>
+      </div>
+      <div className="overview-metrics" aria-label="Cluster summary">
+        <div className="overview-metric">
+          <span>Studios online</span>
+          <strong>
+            {snapshot.cluster.nodes.filter((node) => node.reachability === "healthy").length}
+            <span className="metric-unit"> / {snapshot.cluster.nodes.length}</span>
+          </strong>
+          <small>Healthy registered nodes</small>
+        </div>
+        <div className="overview-metric">
+          <span>Available Studio memory</span>
+          <strong>
+            {gb(snapshot.ledgers.reduce((total, ledger) => total + ledger.free_bytes, 0))}
+          </strong>
+          <small>Within the placement budget</small>
+        </div>
+        <div className="overview-metric">
+          <span>Active instances</span>
+          <strong>{activeInstances.length}</strong>
+          <small>Reported by the control plane</small>
+        </div>
+      </div>
       {snapshot.core && (
         <section className="panel glass node-card" aria-label="Core control-plane">
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <h3>Core · {snapshot.core.host_name}</h3>
+            <h3>Core control plane</h3>
             <span className="status">
               <i className={`dot ${snapshot.core.health}`} />
               {snapshot.core.health}
@@ -109,10 +142,10 @@ export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
                 Disk free<b>{n?.disk_free_bytes == null ? "—" : gb(n.disk_free_bytes)}</b>
               </span>
               <span className="fact">
-                CPU<b>{n?.cpu_percent?.toFixed(0) ?? "—"}%</b>
+                CPU<b>{n?.cpu_percent == null ? "—" : `${n.cpu_percent.toFixed(0)}%`}</b>
               </span>
               <span className="fact">
-                GPU<b>{n?.gpu_percent?.toFixed(0) ?? "—"}%</b>
+                GPU<b>{n?.gpu_percent == null ? "—" : `${n.gpu_percent.toFixed(0)}%`}</b>
               </span>
               <span className="fact">
                 Thermal<b>{n?.thermal_state ?? "unknown"}</b>
@@ -132,7 +165,7 @@ export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
       })}
       <section className="panel glass wide">
         <h3>Instances & alerts</h3>
-        {snapshot.cluster.instances.length === 0 ? (
+        {activeInstances.length === 0 ? (
           <p className="empty">No model instances are running.</p>
         ) : (
           <table>
@@ -145,7 +178,7 @@ export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
               </tr>
             </thead>
             <tbody>
-              {snapshot.cluster.instances.map((i) => (
+              {activeInstances.map((i) => (
                 <tr key={i.id}>
                   <td className="mono">{i.id.slice(0, 8)}</td>
                   <td>{i.policy}</td>
@@ -676,7 +709,7 @@ export function DataPage({ kind }: { kind: "models" | "instances" }) {
     </main>
   );
 }
-export function IdentityPage() {
+export function IdentityPage({ onIdentityChanged }: { onIdentityChanged?: () => void } = {}) {
   const [users, setUsers] = useState<User[]>([]),
     [error, setError] = useState("");
   const [email, setEmail] = useState("");
@@ -738,10 +771,16 @@ export function IdentityPage() {
     load();
   };
   const updateEntitlement = async (user: User, grant: boolean) => {
-    await api(`/api/v1/admin/users/${user.id}/entitlements/explicit_image`, {
-      method: grant ? "PUT" : "DELETE",
-    });
-    load();
+    setError("");
+    try {
+      await api(`/api/v1/admin/users/${user.id}/entitlements/explicit`, {
+        method: grant ? "PUT" : "DELETE",
+      });
+      load();
+      onIdentityChanged?.();
+    } catch (cause) {
+      setError(String(cause));
+    }
   };
   const revokeKey = async (user: User, key: ApiKey) => {
     await api(`/api/v1/admin/keys/${key.id}`, { method: "DELETE" });
@@ -832,15 +871,10 @@ export function IdentityPage() {
                   <button
                     className="button"
                     onClick={() =>
-                      void updateEntitlement(
-                        u,
-                        !(u.entitlements?.includes("explicit_image") ?? false),
-                      )
+                      void updateEntitlement(u, !(u.entitlements?.includes("explicit") ?? false))
                     }
                   >
-                    {u.entitlements?.includes("explicit_image")
-                      ? "Revoke explicit"
-                      : "Grant explicit"}
+                    {u.entitlements?.includes("explicit") ? "Revoke explicit" : "Grant explicit"}
                   </button>
                 </div>
                 {keys[u.id]?.map((key) => (
@@ -1245,7 +1279,10 @@ export function App() {
   if (images)
     return (
       <AppShell view="images" canAdmin={me.role === "admin"} onSignOut={signOut}>
-        <Images canEditPresets={me.role === "admin"} />
+        <Images
+          canEditPresets={me.role === "admin"}
+          canGenerateExplicit={!!me.entitlements?.includes("explicit")}
+        />
       </AppShell>
     );
   if (training)
@@ -1285,7 +1322,13 @@ export function App() {
       ) : tab === "instances" ? (
         <DataPage kind="instances" />
       ) : tab === "identity" ? (
-        <IdentityPage />
+        <IdentityPage
+          onIdentityChanged={() =>
+            void api<User>("/api/v1/me")
+              .then(setMe)
+              .catch((error) => setAuthError(String(error)))
+          }
+        />
       ) : tab === "upgrades" ? (
         <UpgradesPage
           enabled={!!stream.data?.capabilities.upgrades}
