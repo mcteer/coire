@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from coire_api.app import create_app
 from coire_core.settings import Settings
 
-EXEMPT = {"/ready", "/health", "/failover/ready", "/api/v1/nodes/register"}
+EXEMPT = {"/ready", "/health", "/failover/ready", "/api/v1/nodes/register", "/api/v1/auth/local"}
 
 
 def _path(template: str) -> str:
@@ -50,4 +50,5 @@ async def test_every_application_route_except_declared_health_or_node_auth_refus
 def test_anonymous_exceptions_are_exact_and_reviewable(app) -> None:  # type: ignore[no-untyped-def]
     paths = set(app.openapi()["paths"])
     assert paths >= EXEMPT
+    assert app.openapi()["paths"]["/api/v1/auth/local"].keys() == {"get"}
     assert "/api/v1/me" in paths

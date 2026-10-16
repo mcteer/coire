@@ -557,3 +557,15 @@ and establishes the token set; features 007, 014, 015, and 016 inherit it.
 * [Oumi](https://github.com/oumi-ai/oumi), [Oumi training configuration](https://oumi.ai/docs/en/latest/user_guides/train/configuration.html) — reference for training-tool structure only
 * [mlx-lm LORA.md](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/LORA.md), [mlx-lm-lora](https://github.com/Goekdeniz-Guelmez/mlx-lm-lora)
 * [Pydantic AI](https://github.com/pydantic/pydantic-ai), [MCP client docs](https://pydantic.dev/docs/ai/mcp/client/), [durable execution overview](https://pydantic.dev/docs/ai/capabilities/durable_execution/overview/)
+
+
+### Local browser identity
+
+Feature [024](../specs/024-local-browser-signin/spec.md) adds opt-in email/password sign-in
+for existing users on Core, without requiring an edge identity provider for local use.
+Argon2id credentials, digest-only revocable sessions and bounded login windows live in
+Postgres. Every session request rechecks the user's active state, role and entitlements;
+every cookie mutation requires the exact configured HTTPS origin and host. LAN membership
+never grants identity. Existing Access and API-key authentication remain independent.
+Local sessions require Core's database and do not add state to the Studio failover tier.
+See [local sign-in operations](runbooks/local-signin.md) for deployment and rollback.

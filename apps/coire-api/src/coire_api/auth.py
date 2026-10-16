@@ -257,6 +257,10 @@ async def authenticate_request(request: Request) -> Principal:
             permitted_model_ids=permitted_model_ids,
         )
     assertion = request.headers.get("cf-access-jwt-assertion", "")
+    if not authorization and not request.headers.get("x-api-key") and not assertion:
+        from coire_api.identity.local import authenticate_session
+
+        return await authenticate_session(request)
     if not bearer.startswith(("coire_", "coire_run_")) and not assertion:
         return ANONYMOUS
     async with session_scope() as session:

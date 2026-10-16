@@ -1,0 +1,19 @@
+# Opt-in local HTTPS. Preserves the existing plaintext node/gateway listener.
+# Activation requires the operator's network approval; bind to the existing control address.
+services:
+  coire-web:
+    ports:
+      - "${COIRE_CONTROL_BIND_ADDRESS:-127.0.0.1}:${COIRE_LOCAL_TLS_PORT:-8443}:8081"
+    volumes:
+      - "${COIRE_LOCAL_TLS_CONFIG:?prepare local TLS first}:/etc/nginx/nginx.conf:ro"
+    secrets: [local_tls_certificate, local_tls_private_key]
+  coire-api:
+    environment:
+      LOCAL_AUTH_ENABLED: "true"
+      LOCAL_AUTH_ORIGIN: ${COIRE_LOCAL_AUTH_ORIGIN:?set exact local HTTPS origin}
+      CHAT_BROWSER_ORIGIN: ${COIRE_LOCAL_AUTH_ORIGIN:?set exact local HTTPS origin}
+secrets:
+  local_tls_certificate:
+    file: ${COIRE_LOCAL_TLS_CERTIFICATE:?prepare local TLS first}
+  local_tls_private_key:
+    file: ${COIRE_LOCAL_TLS_PRIVATE_KEY:?prepare local TLS first}

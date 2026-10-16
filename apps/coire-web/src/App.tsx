@@ -1,3 +1,5 @@
+import type { components } from "./api/schema";
+import { SignIn } from "./pages/SignIn";
 import { type FormEvent, useEffect, useState } from "react";
 import {
   api,
@@ -1171,9 +1173,43 @@ export function App() {
     setHash(location.hash);
   };
   const signOut = () => {
-    clearUpgradeRequest();
-    if (me) clearChatDrafts(me.id);
+    void api<components["schemas"]["LocalAuthStatus"]>("/api/v1/auth/local")
+      .then(async (status) => {
+        if (status.enabled) {
+          try {
+            await api<void>("/api/v1/auth/local/logout", { method: "POST" });
+          } catch (error) {
+            if (error instanceof ApiError && error.status === 401 && status.access_enabled) {
+              clearUpgradeRequest();
+              if (me) clearChatDrafts(me.id);
+              location.assign("/cdn-cgi/access/logout");
+              return;
+            }
+            throw error;
+          }
+          clearUpgradeRequest();
+          if (me) clearChatDrafts(me.id);
+          setMe(null);
+          setAuthExpired(true);
+          setAuthError("Signed out");
+        } else {
+          clearUpgradeRequest();
+          if (me) clearChatDrafts(me.id);
+          location.assign("/cdn-cgi/access/logout");
+        }
+      })
+      .catch((error: unknown) => setAuthError(String(error)));
   };
+  if (authExpired)
+    return (
+      <SignIn
+        onSignedIn={(user) => {
+          setMe(user);
+          setAuthExpired(false);
+          setAuthError("");
+        }}
+      />
+    );
   if (authError)
     return (
       <main className="app">

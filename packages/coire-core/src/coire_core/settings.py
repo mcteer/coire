@@ -319,6 +319,8 @@ class Settings(BaseSettings):
     chat_normalized_max_side: int = Field(default=2048, ge=1, le=2048)
     chat_event_retention_hours: int = Field(default=24, ge=1, le=24)
     chat_purge_deadline_hours: int = Field(default=24, ge=1, le=24)
+    local_auth_enabled: bool = False
+    local_auth_origin: str = ""
     chat_browser_origin: str = ""
 
     # --- private native images; disabled until authorization/publication exist ---
@@ -357,7 +359,7 @@ class Settings(BaseSettings):
     def empty_chat_default_model(cls, value: object) -> object:
         return None if value == "" else value
 
-    @field_validator("chat_browser_origin")
+    @field_validator("chat_browser_origin", "local_auth_origin")
     @classmethod
     def chat_origin_is_exact(cls, value: str) -> str:
         if not value:

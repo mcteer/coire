@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import type { ConsoleSnapshot } from "../api/client";
 
-export type AdminTab = "overview" | "models" | "instances" | "activity" | "identity" | "audit" | "upgrades";
+export type AdminTab =
+  "overview" | "models" | "instances" | "activity" | "identity" | "audit" | "upgrades";
 const tabs: [AdminTab, string][] = [
   ["overview", "Overview"],
   ["models", "Models"],
@@ -42,11 +43,11 @@ export function AppShell({
             /{" "}
             {view === "chat"
               ? "Chat"
-               : view === "images"
-                 ? "Images"
-                 : view === "training"
-                   ? "Training"
-                : "Admin / " + tabs.find(([id]) => id === tab)?.[1]}
+              : view === "images"
+                ? "Images"
+                : view === "training"
+                  ? "Training"
+                  : "Admin / " + tabs.find(([id]) => id === tab)?.[1]}
           </span>
         </div>
         <div className="chips">
@@ -62,24 +63,26 @@ export function AppShell({
             </>
           )}
           {onSignOut && (
-            <a className="chip" href="/cdn-cgi/access/logout" onClick={onSignOut}>
+            <button className="chip" type="button" onClick={onSignOut}>
               Sign out
-            </a>
+            </button>
           )}
         </div>
       </header>
       {view === "admin" && tab && setTab && (
         <nav className="tabs glass" aria-label="Admin sections">
-          {tabs.filter(([id]) => id !== "upgrades" || snapshot?.capabilities.upgrades).map(([id, label]) => (
-            <button
-              className={"tab " + (tab === id ? "active" : "")}
-              aria-current={tab === id ? "page" : undefined}
-              onClick={() => setTab(id)}
-              key={id}
-            >
-              {label}
-            </button>
-          ))}
+          {tabs
+            .filter(([id]) => id !== "upgrades" || snapshot?.capabilities.upgrades)
+            .map(([id, label]) => (
+              <button
+                className={"tab " + (tab === id ? "active" : "")}
+                aria-current={tab === id ? "page" : undefined}
+                onClick={() => setTab(id)}
+                key={id}
+              >
+                {label}
+              </button>
+            ))}
         </nav>
       )}
       {children}
@@ -91,7 +94,15 @@ export function AppShell({
         >
           Chat
         </a>
-        {canAdmin && <a className={view === "training" ? "active" : ""} aria-current={view === "training" ? "page" : undefined} href="/#training">Training</a>}
+        {canAdmin && (
+          <a
+            className={view === "training" ? "active" : ""}
+            aria-current={view === "training" ? "page" : undefined}
+            href="/#training"
+          >
+            Training
+          </a>
+        )}
         <a
           className={view === "images" ? "active" : ""}
           aria-current={view === "images" ? "page" : undefined}

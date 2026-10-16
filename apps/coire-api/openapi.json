@@ -14690,6 +14690,69 @@
         "title": "LoadState",
         "type": "string"
       },
+      "LocalAuthStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "access_enabled": {
+            "title": "Access Enabled",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "access_enabled"
+        ],
+        "title": "LocalAuthStatus",
+        "type": "object"
+      },
+      "LocalLogin": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 1024,
+            "minLength": 15,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LocalLogin",
+        "type": "object"
+      },
+      "LocalSessionIssued": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        },
+        "required": [
+          "user",
+          "expires_at"
+        ],
+        "title": "LocalSessionIssued",
+        "type": "object"
+      },
       "McpCallState": {
         "enum": [
           "accepted",
@@ -41395,6 +41458,82 @@
         "summary": "Create Key",
         "tags": [
           "admin: identity"
+        ]
+      }
+    },
+    "/api/v1/auth/local": {
+      "get": {
+        "operationId": "configuration_api_v1_auth_local_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Configuration",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/local/login": {
+      "post": {
+        "operationId": "login_api_v1_auth_local_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalLogin"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalSessionIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/local/logout": {
+      "post": {
+        "operationId": "logout_api_v1_auth_local_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "identity"
         ]
       }
     },

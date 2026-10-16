@@ -1,0 +1,35 @@
+{
+  "uid": "coire-local-auth",
+  "title": "Coire Local Sign-in",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": [
+    "coire",
+    "identity"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Local sign-in outcomes",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_local_auth_attempts_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

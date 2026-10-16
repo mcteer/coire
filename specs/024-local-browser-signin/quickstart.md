@@ -1,0 +1,3 @@
+# Acceptance
+
+Use a private disposable database and exact loopback origin. Provision an existing active user through the audited operator utility. Verify unknown/wrong/disabled credentials, throttling, absent/wrong Origin and Host; sign in, reload /me, change role/entitlements, logout and replay; reset and replay, expire and replay. Confirm logs/audit contain no passwords or cookie material. Real browser must show form, correct identity and working logout. LAN acceptance additionally uses local HTTPS and a trusted host certificate. Never reuse production credentials for fixtures. Remove fixture containers and volumes on exit.

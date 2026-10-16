@@ -173,3 +173,12 @@ explicit-content entitlement is surfaced on Account.
 Two design rules are security-relevant and belong to this feature: a key's secret is shown only by
 its prefix in the table, and Danger-variant buttons are reserved for destructive actions such as
 revoke. The shell and tokens come from feature 008.
+
+
+## Amendment — Local browser identity (2026-10-15)
+
+[Feature 024](../024-local-browser-signin/spec.md) extends FR-002 and the browser-only
+Access clarification with explicitly enabled local password sessions for existing active
+users. The application independently verifies these credentials and revalidates database
+identity on every request. This adds no unauthenticated data access, public registration,
+implicit admin role or LAN trust exception. Access and scoped API keys remain supported.
